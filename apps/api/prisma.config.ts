@@ -1,0 +1,14 @@
+import 'dotenv/config';
+import { defineConfig } from 'prisma/config';
+
+export default defineConfig({
+  schema: 'prisma/schema.prisma',
+  migrations: {
+    path: 'prisma/migrations',
+    seed: 'ts-node --transpile-only prisma/seed.ts',
+  },
+  datasource: {
+    // Empty string lets `prisma generate` run without a database (e.g. in Docker builds).
+    url: process.env.DATABASE_URL ?? '',
+  },
+});

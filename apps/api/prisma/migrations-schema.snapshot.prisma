@@ -1,0 +1,775 @@
+// AI Automation Company — database schema
+//
+// Conventions
+// - Table and column names are snake_case in PostgreSQL (via @@map / @map); Prisma fields are camelCase.
+// - Every table has created_at; mutable tables also have updated_at.
+// - Secrets are NEVER stored here. Source connections reference the *name* of an env var that holds a credential.
+// - Lead de-duplication happens at lead_sources level: (source_id, external_id) and (source_id, canonical_url) are unique.
+//   Leads are never merged on name similarity alone.
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+// Connection URL comes from prisma.config.ts (DATABASE_URL); the runtime connects via @prisma/adapter-pg.
+datasource db {
+  provider = "postgresql"
+}
+
+// ─────────────────────────────── Enums ───────────────────────────────
+
+enum UserRole {
+  CEO
+  ADMIN
+  VIEWER
+}
+
+enum AgentKind {
+  GENERAL_MANAGER
+  MANAGER
+  WORKER
+}
+
+enum ModelTier {
+  ROUTINE
+  ADVANCED
+}
+
+enum TaskKind {
+  GOAL
+  DEPARTMENT_TASK
+  WORKER_TASK
+}
+
+enum TaskStatus {
+  QUEUED
+  RUNNING
+  AWAITING_APPROVAL
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum TaskPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum ActorType {
+  USER
+  AGENT
+  SYSTEM
+}
+
+enum AgentRunStatus {
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+enum ToolCallStatus {
+  REQUESTED
+  DENIED
+  SUCCEEDED
+  FAILED
+}
+
+enum SourceAccessMethod {
+  OFFICIAL_API
+  AUTHORIZED_FEED
+  APPROVED_INTEGRATION
+  MANUAL_IMPORT
+}
+
+enum ConnectionStatus {
+  UNCONFIGURED
+  CONFIGURED
+  CONNECTED
+  ERROR
+  DISABLED
+}
+
+enum LeadStage {
+  NEW
+  QUALIFIED
+  DRAFT_READY
+  AWAITING_APPROVAL
+  CONTACTED
+  REPLIED
+  INTERESTED
+  DEMO_REQUESTED
+  DEMO_COMPLETED
+  NEGOTIATION
+  WON
+  LOST
+  DO_NOT_CONTACT
+}
+
+enum IntentLabel {
+  HIGH
+  MEDIUM
+  LOW
+  NEEDS_REVIEW
+}
+
+enum OutreachChannel {
+  EMAIL
+  LINKEDIN
+  REDDIT
+  X
+  FACEBOOK
+  MARKETPLACE
+  OTHER
+}
+
+enum OutreachStatus {
+  DRAFT
+  AWAITING_APPROVAL
+  APPROVED
+  SENT
+  FAILED
+  CANCELLED
+}
+
+enum OutreachEventType {
+  DRAFT_CREATED
+  APPROVAL_REQUESTED
+  APPROVED
+  REJECTED
+  SENT
+  SEND_FAILED
+  REPLY_RECEIVED
+  FOLLOW_UP_DUE
+  OPT_OUT
+  BOUNCED
+  NOTE
+}
+
+enum CampaignStatus {
+  DRAFT
+  PROPOSED
+  AWAITING_APPROVAL
+  APPROVED
+  ACTIVE
+  PAUSED
+  COMPLETED
+  CANCELLED
+}
+
+enum CampaignAssetType {
+  LINKEDIN_POST
+  CASE_STUDY
+  LANDING_PAGE
+  PORTFOLIO_DESCRIPTION
+  EDUCATIONAL
+  EMAIL
+  AD_COPY
+  OTHER
+}
+
+enum AssetStatus {
+  DRAFT
+  AWAITING_APPROVAL
+  APPROVED
+  PUBLISHED
+  REJECTED
+}
+
+enum ApprovalActionType {
+  SEND_EXTERNAL_MESSAGE
+  PUBLISH_CONTENT
+  LAUNCH_PAID_CAMPAIGN
+  SHARE_SENSITIVE_FILE
+  BULK_DELETE
+  CUSTOMER_COMMITMENT
+  CONFIRM_DEAL
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+  CANCELLED
+}
+
+enum NotificationType {
+  HIGH_INTENT_LEAD
+  POSITIVE_REPLY
+  DEMO_REQUESTED
+  APPROVAL_REQUIRED
+  TASK_FAILED_REPEATEDLY
+  REPORT_READY
+  TASK_UPDATE
+  SYSTEM
+}
+
+enum ProjectStatus {
+  PLANNING
+  IN_PROGRESS
+  ON_HOLD
+  DELIVERED
+  CANCELLED
+}
+
+// ─────────────────────────────── People & org ───────────────────────────────
+
+model User {
+  id           String    @id @default(uuid()) @db.Uuid
+  email        String    @unique
+  name         String
+  passwordHash String    @map("password_hash")
+  role         UserRole  @default(VIEWER)
+  isActive     Boolean   @default(true) @map("is_active")
+  lastLoginAt  DateTime? @map("last_login_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  tasksCreated       Task[]         @relation("TaskCreatedBy")
+  taskEvents         TaskEvent[]
+  approvalsDecided   Approval[]     @relation("ApprovalDecidedBy")
+  notifications      Notification[]
+  auditLogs          AuditLog[]
+  leadScores         LeadScore[]
+  projectsConfirmed  Project[]      @relation("ProjectConfirmedBy")
+
+  @@map("users")
+}
+
+model Department {
+  id          String   @id @default(uuid()) @db.Uuid
+  key         String   @unique
+  name        String
+  description String
+  isActive    Boolean  @default(true) @map("is_active")
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  agents AgentDefinition[]
+  tasks  Task[]
+
+  @@map("departments")
+}
+
+/// A configurable AI role (General Manager, department manager or worker).
+/// Roles share AI providers — one definition is NOT one model instance or API key.
+model AgentDefinition {
+  id                        String     @id @default(uuid()) @db.Uuid
+  key                       String     @unique
+  name                      String
+  kind                      AgentKind
+  departmentId              String?    @map("department_id") @db.Uuid
+  parentId                  String?    @map("parent_id") @db.Uuid
+  role                      String
+  instructions              String
+  reportingResponsibilities String     @map("reporting_responsibilities")
+  /// Tool names from the server-side tool registry. Unknown names are rejected by the API.
+  tools                     String[]   @default([])
+  modelTier                 ModelTier  @default(ROUTINE) @map("model_tier")
+  /// Optional per-agent model override (otherwise the tier's env-configured model is used)
+  modelOverride             String?    @map("model_override")
+  maxOutputTokens           Int        @default(2000) @map("max_output_tokens")
+  isEnabled                 Boolean    @default(true) @map("is_enabled")
+  sortOrder                 Int        @default(0) @map("sort_order")
+  createdAt                 DateTime   @default(now()) @map("created_at")
+  updatedAt                 DateTime   @updatedAt @map("updated_at")
+
+  department  Department?        @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  parent      AgentDefinition?   @relation("AgentHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children    AgentDefinition[]  @relation("AgentHierarchy")
+  permissions AgentPermission[]
+  tasks       Task[]
+  taskEvents  TaskEvent[]
+  runs        AgentRun[]
+  approvals   Approval[]
+  auditLogs   AuditLog[]
+
+  @@index([departmentId])
+  @@index([parentId])
+  @@map("agent_definitions")
+}
+
+model AgentPermission {
+  id               String   @id @default(uuid()) @db.Uuid
+  agentId          String   @map("agent_id") @db.Uuid
+  /// Permission key from the server-side registry, e.g. "leads.read", "outreach.draft"
+  permission       String
+  /// When true, exercising this permission creates an approval request instead of executing directly.
+  requiresApproval Boolean  @default(false) @map("requires_approval")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  agent AgentDefinition @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@unique([agentId, permission])
+  @@map("agent_permissions")
+}
+
+// ─────────────────────────────── Tasks & execution ───────────────────────────────
+
+model Task {
+  id              String       @id @default(uuid()) @db.Uuid
+  kind            TaskKind     @default(DEPARTMENT_TASK)
+  title           String
+  description     String       @default("")
+  status          TaskStatus   @default(QUEUED)
+  priority        TaskPriority @default(NORMAL)
+  departmentId    String?      @map("department_id") @db.Uuid
+  assignedAgentId String?      @map("assigned_agent_id") @db.Uuid
+  parentTaskId    String?      @map("parent_task_id") @db.Uuid
+  createdById     String?      @map("created_by_id") @db.Uuid
+  input           Json?
+  output          Json?
+  /// Safe, human-readable failure reason (never raw stack traces or secrets)
+  errorMessage    String?      @map("error_message")
+  attempts        Int          @default(0)
+  maxAttempts     Int          @default(3) @map("max_attempts")
+  /// Prevents running duplicate jobs: same key → same task
+  idempotencyKey  String?      @unique @map("idempotency_key")
+  dueAt           DateTime?    @map("due_at")
+  startedAt       DateTime?    @map("started_at")
+  completedAt     DateTime?    @map("completed_at")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+
+  department    Department?       @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  assignedAgent AgentDefinition?  @relation(fields: [assignedAgentId], references: [id], onDelete: SetNull)
+  parentTask    Task?             @relation("TaskHierarchy", fields: [parentTaskId], references: [id], onDelete: Cascade)
+  subtasks      Task[]            @relation("TaskHierarchy")
+  createdBy     User?             @relation("TaskCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  dependencies  TaskDependency[]  @relation("TaskDependsOn")
+  dependents    TaskDependency[]  @relation("TaskDependedOnBy")
+  events        TaskEvent[]
+  runs          AgentRun[]
+  approvals     Approval[]
+  campaigns     Campaign[]
+
+  @@index([status])
+  @@index([departmentId])
+  @@index([assignedAgentId])
+  @@index([parentTaskId])
+  @@index([createdAt])
+  @@map("tasks")
+}
+
+model TaskDependency {
+  id          String   @id @default(uuid()) @db.Uuid
+  taskId      String   @map("task_id") @db.Uuid
+  dependsOnId String   @map("depends_on_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  task      Task @relation("TaskDependsOn", fields: [taskId], references: [id], onDelete: Cascade)
+  dependsOn Task @relation("TaskDependedOnBy", fields: [dependsOnId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, dependsOnId])
+  @@index([dependsOnId])
+  @@map("task_dependencies")
+}
+
+/// Append-only execution history for a task.
+model TaskEvent {
+  id           String      @id @default(uuid()) @db.Uuid
+  taskId       String      @map("task_id") @db.Uuid
+  type         String
+  fromStatus   TaskStatus? @map("from_status")
+  toStatus     TaskStatus? @map("to_status")
+  message      String      @default("")
+  actorType    ActorType   @map("actor_type")
+  actorUserId  String?     @map("actor_user_id") @db.Uuid
+  actorAgentId String?     @map("actor_agent_id") @db.Uuid
+  data         Json?
+  createdAt    DateTime    @default(now()) @map("created_at")
+
+  task       Task             @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  actorUser  User?            @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  actorAgent AgentDefinition? @relation(fields: [actorAgentId], references: [id], onDelete: SetNull)
+
+  @@index([taskId, createdAt])
+  @@map("task_events")
+}
+
+model AgentRun {
+  id           String         @id @default(uuid()) @db.Uuid
+  taskId       String?        @map("task_id") @db.Uuid
+  agentId      String         @map("agent_id") @db.Uuid
+  status       AgentRunStatus @default(RUNNING)
+  provider     String
+  model        String
+  input        Json?
+  output       Json?
+  errorMessage String?        @map("error_message")
+  inputTokens  Int?           @map("input_tokens")
+  outputTokens Int?           @map("output_tokens")
+  startedAt    DateTime       @default(now()) @map("started_at")
+  finishedAt   DateTime?      @map("finished_at")
+
+  task         Task?           @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  agent        AgentDefinition @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  toolCalls    ToolCall[]
+  usageRecords UsageRecord[]
+  leadScores   LeadScore[]
+
+  @@index([taskId])
+  @@index([agentId, startedAt])
+  @@map("agent_runs")
+}
+
+model ToolCall {
+  id           String         @id @default(uuid()) @db.Uuid
+  agentRunId   String         @map("agent_run_id") @db.Uuid
+  toolName     String         @map("tool_name")
+  arguments    Json
+  result       Json?
+  status       ToolCallStatus @default(REQUESTED)
+  errorMessage String?        @map("error_message")
+  createdAt    DateTime       @default(now()) @map("created_at")
+  finishedAt   DateTime?      @map("finished_at")
+
+  agentRun AgentRun @relation(fields: [agentRunId], references: [id], onDelete: Cascade)
+
+  @@index([agentRunId])
+  @@map("tool_calls")
+}
+
+// ─────────────────────────────── Lead sources ───────────────────────────────
+
+model Source {
+  id                  String             @id @default(uuid()) @db.Uuid
+  key                 String             @unique
+  name                String
+  platform            String
+  accessMethod        SourceAccessMethod @map("access_method")
+  description         String             @default("")
+  /// What the platform's terms/permissions allow — shown to the CEO before enabling
+  complianceNotes     String             @default("") @map("compliance_notes")
+  /// e.g. ["search", "pagination", "read_replies"]
+  capabilities        String[]           @default([])
+  scanIntervalMinutes Int                @default(1440) @map("scan_interval_minutes")
+  isEnabled           Boolean            @default(false) @map("is_enabled")
+  createdAt           DateTime           @default(now()) @map("created_at")
+  updatedAt           DateTime           @updatedAt @map("updated_at")
+
+  connections SourceConnection[]
+  leadSources LeadSource[]
+
+  @@map("sources")
+}
+
+model SourceConnection {
+  id             String           @id @default(uuid()) @db.Uuid
+  sourceId       String           @map("source_id") @db.Uuid
+  label          String           @default("default")
+  status         ConnectionStatus @default(UNCONFIGURED)
+  /// Non-secret configuration only (search terms, subreddits, filters…)
+  config         Json?
+  /// Name of the environment variable holding the credential — never the credential itself
+  credentialsEnv String?          @map("credentials_env")
+  cursor         String?
+  lastSyncAt     DateTime?        @map("last_sync_at")
+  lastSuccessAt  DateTime?        @map("last_success_at")
+  lastError      String?          @map("last_error")
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+
+  source Source @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceId, label])
+  @@map("source_connections")
+}
+
+// ─────────────────────────────── Sales ───────────────────────────────
+
+model Lead {
+  id              String       @id @default(uuid()) @db.Uuid
+  /// Company or public profile name, exactly as found
+  name            String
+  contactName     String?      @map("contact_name")
+  /// Only stored when the source permits it
+  contactEmail    String?      @map("contact_email")
+  contactUrl      String?      @map("contact_url")
+  websiteUrl      String?      @map("website_url")
+  country         String?
+  industry        String?
+  requirements    String       @default("")
+  requestedSkills String[]     @default([]) @map("requested_skills")
+  /// Only when explicitly stated by the prospect — never estimated
+  budgetText      String?      @map("budget_text")
+  stage           LeadStage    @default(NEW)
+  intentLabel     IntentLabel? @map("intent_label")
+  latestScore     Int?         @map("latest_score")
+  doNotContact    Boolean      @default(false) @map("do_not_contact")
+  optedOutAt      DateTime?    @map("opted_out_at")
+  demoScheduledAt DateTime?    @map("demo_scheduled_at")
+  /// Set only when the CEO confirms the deal
+  dealValue       Decimal?     @map("deal_value") @db.Decimal(12, 2)
+  currency        String       @default("USD")
+  wonAt           DateTime?    @map("won_at")
+  lostAt          DateTime?    @map("lost_at")
+  lostReason      String?      @map("lost_reason")
+  notes           String       @default("")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+
+  sources        LeadSource[]
+  scores         LeadScore[]
+  messages       OutreachMessage[]
+  outreachEvents OutreachEvent[]
+  project        Project?
+
+  @@index([stage])
+  @@index([intentLabel])
+  @@index([createdAt])
+  @@index([contactEmail])
+  @@map("leads")
+}
+
+/// Where and how a lead was found. Evidence for every lead.
+model LeadSource {
+  id           String             @id @default(uuid()) @db.Uuid
+  leadId       String             @map("lead_id") @db.Uuid
+  sourceId     String             @map("source_id") @db.Uuid
+  /// Platform's own ID for the post/listing, when available
+  externalId   String?            @map("external_id")
+  url          String
+  canonicalUrl String             @map("canonical_url")
+  postDate     DateTime?          @map("post_date")
+  accessMethod SourceAccessMethod @map("access_method")
+  discoveredAt DateTime           @default(now()) @map("discovered_at")
+  snapshot     Json?
+
+  lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  source Source @relation(fields: [sourceId], references: [id], onDelete: Restrict)
+
+  @@unique([sourceId, externalId])
+  @@unique([sourceId, canonicalUrl])
+  @@index([leadId])
+  @@index([canonicalUrl])
+  @@map("lead_sources")
+}
+
+model LeadScore {
+  id            String      @id @default(uuid()) @db.Uuid
+  leadId        String      @map("lead_id") @db.Uuid
+  score         Int
+  label         IntentLabel
+  /// Per-criterion breakdown and reasons
+  reasons       Json
+  rubricVersion String      @map("rubric_version")
+  agentRunId    String?     @map("agent_run_id") @db.Uuid
+  scoredById    String?     @map("scored_by_id") @db.Uuid
+  createdAt     DateTime    @default(now()) @map("created_at")
+
+  lead     Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  agentRun AgentRun? @relation(fields: [agentRunId], references: [id], onDelete: SetNull)
+  scoredBy User?     @relation(fields: [scoredById], references: [id], onDelete: SetNull)
+
+  @@index([leadId, createdAt])
+  @@map("lead_scores")
+}
+
+model OutreachMessage {
+  id              String          @id @default(uuid()) @db.Uuid
+  leadId          String          @map("lead_id") @db.Uuid
+  channel         OutreachChannel
+  subject         String?
+  body            String
+  /// Why the message was written this way — shown alongside the draft
+  rationale       String          @default("")
+  status          OutreachStatus  @default(DRAFT)
+  isFollowUp      Boolean         @default(false) @map("is_follow_up")
+  parentMessageId String?         @map("parent_message_id") @db.Uuid
+  scheduledFor    DateTime?       @map("scheduled_for")
+  sentAt          DateTime?       @map("sent_at")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+
+  lead          Lead              @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  parentMessage OutreachMessage?  @relation("FollowUps", fields: [parentMessageId], references: [id], onDelete: SetNull)
+  followUps     OutreachMessage[] @relation("FollowUps")
+  events        OutreachEvent[]
+
+  @@index([leadId])
+  @@index([status])
+  @@map("outreach_messages")
+}
+
+model OutreachEvent {
+  id         String            @id @default(uuid()) @db.Uuid
+  leadId     String            @map("lead_id") @db.Uuid
+  messageId  String?           @map("message_id") @db.Uuid
+  type       OutreachEventType
+  occurredAt DateTime          @default(now()) @map("occurred_at")
+  data       Json?
+
+  lead    Lead             @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  message OutreachMessage? @relation(fields: [messageId], references: [id], onDelete: SetNull)
+
+  @@index([leadId, occurredAt])
+  @@index([type, occurredAt])
+  @@map("outreach_events")
+}
+
+// ─────────────────────────────── Marketing ───────────────────────────────
+
+model Campaign {
+  id                   String         @id @default(uuid()) @db.Uuid
+  name                 String
+  objective            String         @default("")
+  industries           String[]       @default([])
+  countries            String[]       @default([])
+  services             String[]       @default([])
+  targetSegments       Json?          @map("target_segments")
+  messagingConcepts    Json?          @map("messaging_concepts")
+  successMetrics       Json?          @map("success_metrics")
+  /// Recommendation only; spending requires an approved LAUNCH_PAID_CAMPAIGN approval
+  budgetRecommendation Decimal?       @map("budget_recommendation") @db.Decimal(12, 2)
+  budgetCurrency       String         @default("USD") @map("budget_currency")
+  isPaid               Boolean        @default(false) @map("is_paid")
+  status               CampaignStatus @default(DRAFT)
+  startDate            DateTime?      @map("start_date")
+  endDate              DateTime?      @map("end_date")
+  taskId               String?        @map("task_id") @db.Uuid
+  createdAt            DateTime       @default(now()) @map("created_at")
+  updatedAt            DateTime       @updatedAt @map("updated_at")
+
+  task   Task?           @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  assets CampaignAsset[]
+
+  @@index([status])
+  @@map("campaigns")
+}
+
+model CampaignAsset {
+  id           String            @id @default(uuid()) @db.Uuid
+  campaignId   String            @map("campaign_id") @db.Uuid
+  type         CampaignAssetType
+  title        String
+  content      String
+  status       AssetStatus       @default(DRAFT)
+  scheduledFor DateTime?         @map("scheduled_for")
+  publishedAt  DateTime?         @map("published_at")
+  createdAt    DateTime          @default(now()) @map("created_at")
+  updatedAt    DateTime          @updatedAt @map("updated_at")
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId])
+  @@map("campaign_assets")
+}
+
+// ─────────────────────────────── Governance ───────────────────────────────
+
+model Approval {
+  id                 String             @id @default(uuid()) @db.Uuid
+  actionType         ApprovalActionType @map("action_type")
+  status             ApprovalStatus     @default(PENDING)
+  /// What will be affected, e.g. entityType="outreach_message"
+  entityType         String             @map("entity_type")
+  entityId           String?            @map("entity_id")
+  summary            String
+  /// Exact action payload that will execute on approval (validated again at execution time)
+  payload            Json?
+  requestedByAgentId String?            @map("requested_by_agent_id") @db.Uuid
+  taskId             String?            @map("task_id") @db.Uuid
+  decidedById        String?            @map("decided_by_id") @db.Uuid
+  decidedAt          DateTime?          @map("decided_at")
+  decisionNote       String?            @map("decision_note")
+  expiresAt          DateTime?          @map("expires_at")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+
+  requestedByAgent AgentDefinition? @relation(fields: [requestedByAgentId], references: [id], onDelete: SetNull)
+  task             Task?            @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  decidedBy        User?            @relation("ApprovalDecidedBy", fields: [decidedById], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([entityType, entityId])
+  @@map("approvals")
+}
+
+model Notification {
+  id        String           @id @default(uuid()) @db.Uuid
+  userId    String           @map("user_id") @db.Uuid
+  type      NotificationType
+  title     String
+  body      String           @default("")
+  link      String?
+  /// One notification per (user, event): prevents duplicates
+  dedupeKey String           @map("dedupe_key")
+  readAt    DateTime?        @map("read_at")
+  createdAt DateTime         @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dedupeKey])
+  @@index([userId, readAt])
+  @@map("notifications")
+}
+
+/// Development project created when the CEO confirms a deal. Development itself is done by the CEO.
+model Project {
+  id            String        @id @default(uuid()) @db.Uuid
+  leadId        String?       @unique @map("lead_id") @db.Uuid
+  name          String
+  description   String        @default("")
+  status        ProjectStatus @default(PLANNING)
+  dealValue     Decimal       @map("deal_value") @db.Decimal(12, 2)
+  currency      String        @default("USD")
+  confirmedAt   DateTime      @default(now()) @map("confirmed_at")
+  confirmedById String?       @map("confirmed_by_id") @db.Uuid
+  startDate     DateTime?     @map("start_date")
+  dueDate       DateTime?     @map("due_date")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+
+  lead        Lead? @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  confirmedBy User? @relation("ProjectConfirmedBy", fields: [confirmedById], references: [id], onDelete: SetNull)
+
+  @@index([confirmedAt])
+  @@map("projects")
+}
+
+/// Append-only. Who did what, when.
+model AuditLog {
+  id           String    @id @default(uuid()) @db.Uuid
+  actorType    ActorType @map("actor_type")
+  actorUserId  String?   @map("actor_user_id") @db.Uuid
+  actorAgentId String?   @map("actor_agent_id") @db.Uuid
+  action       String
+  entityType   String?   @map("entity_type")
+  entityId     String?   @map("entity_id")
+  data         Json?
+  ip           String?
+  userAgent    String?   @map("user_agent")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  actorUser  User?            @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  actorAgent AgentDefinition? @relation(fields: [actorAgentId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([entityType, entityId])
+  @@index([action])
+  @@map("audit_logs")
+}
+
+model UsageRecord {
+  id           String   @id @default(uuid()) @db.Uuid
+  agentRunId   String?  @map("agent_run_id") @db.Uuid
+  provider     String
+  model        String
+  inputTokens  Int      @default(0) @map("input_tokens")
+  outputTokens Int      @default(0) @map("output_tokens")
+  totalTokens  Int      @default(0) @map("total_tokens")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  agentRun AgentRun? @relation(fields: [agentRunId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([provider, model])
+  @@map("usage_records")
+}

@@ -1,0 +1,132 @@
+@import '@fontsource/schibsted-grotesk/400.css';
+@import '@fontsource/schibsted-grotesk/500.css';
+@import '@fontsource/schibsted-grotesk/600.css';
+@import '@fontsource/schibsted-grotesk/700.css';
+@import 'tailwindcss';
+
+/*
+ * HQ tokens. Colors carry meaning: teal = the company / running work,
+ * amber = waiting on the CEO, red = failure, green = done. Nothing is decorative.
+ */
+:root {
+  --paper: #f4f6f5;
+  --panel: #ffffff;
+  --sunken: #eaeeed;
+  --ink: #1b2330;
+  --ink-2: #4a5563;
+  --ink-3: #6b7683;
+  --rule: #dce2e5;
+  --rule-strong: #c4ccd1;
+  --brand: #0f6e6b;
+  --brand-ink: #0a524f;
+  --brand-wash: #e2f0ef;
+  --st-queued: #6b7683;
+  --st-running: #0f7c7a;
+  --st-waiting: #a86b12;
+  --st-waiting-wash: #fbf1df;
+  --st-done: #2e7d4f;
+  --st-failed: #b42318;
+  --st-failed-wash: #fdecea;
+  --st-cancelled: #98a2ad;
+  --focus: #2f6fdb;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #12171e;
+    --panel: #1a2029;
+    --sunken: #151b23;
+    --ink: #e7ecef;
+    --ink-2: #b4bec7;
+    --ink-3: #8b96a1;
+    --rule: #2b333e;
+    --rule-strong: #3a4450;
+    --brand: #3fb5ae;
+    --brand-ink: #7fd3cd;
+    --brand-wash: #18312f;
+    --st-queued: #94a0ac;
+    --st-running: #48bdb7;
+    --st-waiting: #e3a94c;
+    --st-waiting-wash: #2e2416;
+    --st-done: #5cbf84;
+    --st-failed: #f07466;
+    --st-failed-wash: #331b19;
+    --st-cancelled: #6f7a86;
+    --focus: #79a8ff;
+    color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --font-sans: 'Schibsted Grotesk', ui-sans-serif, system-ui, sans-serif;
+  --color-paper: var(--paper);
+  --color-panel: var(--panel);
+  --color-sunken: var(--sunken);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-rule: var(--rule);
+  --color-rule-strong: var(--rule-strong);
+  --color-brand: var(--brand);
+  --color-brand-ink: var(--brand-ink);
+  --color-brand-wash: var(--brand-wash);
+  --color-st-queued: var(--st-queued);
+  --color-st-running: var(--st-running);
+  --color-st-waiting: var(--st-waiting);
+  --color-st-waiting-wash: var(--st-waiting-wash);
+  --color-st-done: var(--st-done);
+  --color-st-failed: var(--st-failed);
+  --color-st-failed-wash: var(--st-failed-wash);
+  --color-st-cancelled: var(--st-cancelled);
+}
+
+html {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--paper);
+}
+
+.num {
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: 'tnum' 1, 'lnum' 1;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* The one orchestrated motion: pipeline segments grow in once on load. */
+@keyframes grow-x {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+.grow-x {
+  transform-origin: left center;
+  animation: grow-x 700ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}

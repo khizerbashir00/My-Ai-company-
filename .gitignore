@@ -1,0 +1,23 @@
+node_modules/
+dist/
+build/
+coverage/
+*.log
+
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+apps/**/.env
+apps/**/.env.*
+!apps/**/.env.example
+
+# Generated / runtime
+storage/
+apps/api/storage/
+apps/web/test-results/
+apps/web/playwright-report/
+apps/web/blob-report/
+.DS_Store
+apps/api/src/generated/
+apps/web/e2e/.auth/
