@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { CheckSquare, LayoutDashboard, LogOut, Menu, Network, Settings, X } from 'lucide-react';
+import { CheckSquare, LayoutDashboard, Link2, LogOut, Megaphone, Menu, Network, Settings, ShieldCheck, Users, X } from 'lucide-react';
 import { useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router';
 import { api } from '../lib/api';
@@ -10,18 +10,17 @@ import { cx } from './ui';
 
 const NAV = [
   { to: '/', label: 'Overview', icon: LayoutDashboard, end: true },
+  { to: '/leads', label: 'Leads', icon: Users },
+  { to: '/sources', label: 'Sources', icon: Link2 },
+  { to: '/marketing', label: 'Marketing', icon: Megaphone },
+  { to: '/approvals', label: 'Approvals', icon: ShieldCheck },
   { to: '/tasks', label: 'Tasks', icon: CheckSquare },
   { to: '/organization', label: 'Organization', icon: Network },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];
 
 /** Built in later phases. Listed so the roadmap is visible, never clickable. */
-const LATER = [
-  { label: 'Leads', phase: 3 },
-  { label: 'Approvals', phase: 5 },
-  { label: 'Campaigns', phase: 5 },
-  { label: 'Reports', phase: 5 },
-];
+const LATER: { label: string; phase: number }[] = [];
 
 export function Layout() {
   const { user, logout } = useAuth();
@@ -72,17 +71,19 @@ export function Layout() {
           </NavLink>
         ))}
       </nav>
-      <div className="mt-6 px-6">
-        <p className="mb-1.5 text-[13px] text-ink-3">Coming in later phases</p>
-        <ul className="space-y-1 text-sm text-ink-3">
-          {LATER.map((l) => (
-            <li key={l.label} className="flex justify-between">
-              <span>{l.label}</span>
-              <span className="num text-[12px]">Phase {l.phase}</span>
-            </li>
-          ))}
-        </ul>
-      </div>
+      {LATER.length > 0 && (
+        <div className="mt-6 px-6">
+          <p className="mb-1.5 text-[13px] text-ink-3">Coming in later phases</p>
+          <ul className="space-y-1 text-sm text-ink-3">
+            {LATER.map((l) => (
+              <li key={l.label} className="flex justify-between">
+                <span>{l.label}</span>
+                <span className="num text-[12px]">Phase {l.phase}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <div className="mt-auto border-t border-rule px-5 py-4">
         <div className="mb-3 flex items-center gap-2 text-[13px] text-ink-3" aria-live="polite">
           <span

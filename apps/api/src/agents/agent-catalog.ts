@@ -42,9 +42,11 @@ export const DEPARTMENTS: DepartmentSeed[] = [
   },
 ];
 
-const SHARED_RULES = `Never invent facts, contacts, budgets or sources. If information is missing, say so.
+const SHARED_RULES = `Never invent facts, contacts, budgets, competitor prices, campaign results or sources. If information is missing, say so.
+Label every claim as VERIFIED (with evidence URL + research timestamp), SUGGESTION (model-generated), or ESTIMATE (not measured).
 Return only the structured output requested by your manager.
-You cannot send, publish, spend money or make commitments yourself — those actions go to the CEO for approval.`;
+You cannot send, publish, spend money or make commitments yourself — those actions go to the CEO for approval.
+After a deal is Won, demos, closing and software development remain the CEO's work — do not claim to build or ship client software.`;
 
 export const AGENTS: AgentSeed[] = [
   {

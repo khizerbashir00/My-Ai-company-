@@ -66,7 +66,17 @@ export interface TaskDetail extends TaskListItem {
   subtasks: { id: string; title: string; status: TaskStatus; kind: TaskKind; priority: TaskPriority; assignedAgent: Ref | null }[];
   dependencies: { dependsOn: { id: string; title: string; status: TaskStatus } }[];
   events: TaskEvent[];
-  runs: { id: string; status: string; model: string; provider: string; startedAt: string; finishedAt: string | null; agent: Ref }[];
+  runs: {
+    id: string;
+    status: string;
+    model: string;
+    provider: string;
+    startedAt: string;
+    finishedAt: string | null;
+    inputTokens?: number | null;
+    outputTokens?: number | null;
+    agent: Ref;
+  }[];
 }
 
 export interface AgentPermission {
@@ -144,6 +154,8 @@ export interface Metrics {
   marketing: {
     campaignsByStatus: { status: string; count: number }[];
     assetsPublished: number;
+    attributedLeads: number;
+    metricImports: number;
     performance: { measured: boolean; note: string };
   };
   tasks: {
@@ -168,6 +180,114 @@ export interface Metrics {
 
 export interface SystemStatus {
   ai: { provider: string; apiKeyConfigured: boolean; routineModel: string | null; advancedModel: string | null };
-  sources: { id: string; key: string; name: string; platform: string; accessMethod: string; isEnabled: boolean }[];
+  email: {
+    provider: string | null;
+    configured: boolean;
+    fromAddress: string | null;
+    replyTo: string | null;
+    inboundWebhookConfigured: boolean;
+  };
+  redisConfigured: boolean;
+  sources: {
+    id: string;
+    key: string;
+    name: string;
+    platform: string;
+    accessMethod: string;
+    isEnabled: boolean;
+    connectionStatus: string | null;
+    lastSuccessAt: string | null;
+    lastError: string | null;
+  }[];
   environment: string;
+}
+
+export type LeadStage =
+  | 'NEW'
+  | 'QUALIFIED'
+  | 'DRAFT_READY'
+  | 'AWAITING_APPROVAL'
+  | 'CONTACTED'
+  | 'REPLIED'
+  | 'INTERESTED'
+  | 'DEMO_REQUESTED'
+  | 'DEMO_COMPLETED'
+  | 'NEGOTIATION'
+  | 'WON'
+  | 'LOST'
+  | 'DO_NOT_CONTACT';
+
+export type IntentLabel = 'HIGH' | 'MEDIUM' | 'LOW' | 'NEEDS_REVIEW';
+export type OutreachStatus = 'DRAFT' | 'AWAITING_APPROVAL' | 'APPROVED' | 'SCHEDULED' | 'SENT' | 'FAILED' | 'CANCELLED';
+
+export interface LeadSourceRef {
+  id: string;
+  url: string;
+  canonicalUrl: string;
+  externalId: string | null;
+  postDate: string | null;
+  discoveredAt: string;
+  accessMethod: string;
+  source: { id: string; key: string; name: string; platform: string; accessMethod: string };
+}
+
+export interface LeadListItem {
+  id: string;
+  name: string;
+  contactName: string | null;
+  contactEmail: string | null;
+  websiteUrl: string | null;
+  stage: LeadStage;
+  intentLabel: IntentLabel | null;
+  latestScore: number | null;
+  doNotContact: boolean;
+  requirements: string;
+  budgetText: string | null;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+  assignedAgent: { id: string; key: string; name: string; kind: AgentKind } | null;
+  sources: LeadSourceRef[];
+  _count: { messages: number; scores: number };
+}
+
+export interface OutreachMessage {
+  id: string;
+  leadId: string;
+  channel: string;
+  subject: string | null;
+  body: string;
+  rationale: string;
+  status: OutreachStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LeadDetail extends LeadListItem {
+  contactUrl: string | null;
+  country: string | null;
+  industry: string | null;
+  requestedSkills: string[];
+  optedOutAt: string | null;
+  outreachPausedAt: string | null;
+  demoScheduledAt: string | null;
+  lostReason: string | null;
+  scores: {
+    id: string;
+    score: number;
+    label: IntentLabel;
+    reasons: { key: string; score: number; reason: string }[];
+    rubricVersion: string;
+    createdAt: string;
+    scoredBy: Ref | null;
+  }[];
+  messages: OutreachMessage[];
+  outreachEvents: { id: string; type: string; occurredAt: string; data: unknown }[];
+}
+
+export interface ScoringRubric {
+  version: string;
+  maxScore: number;
+  criteria: { key: string; label: string; max: number; description: string }[];
+  labels: Record<string, string>;
 }

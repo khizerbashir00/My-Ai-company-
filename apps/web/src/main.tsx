@@ -8,10 +8,15 @@ import './index.css';
 import { ApiError } from './lib/api';
 import { AuthProvider, useAuth } from './lib/auth';
 import { AgentDetailPage } from './pages/AgentDetail';
+import { ApprovalsPage } from './pages/Approvals';
+import { LeadDetailPage } from './pages/LeadDetail';
+import { LeadsPage } from './pages/Leads';
 import { LoginPage } from './pages/Login';
+import { MarketingPage } from './pages/Marketing';
 import { OrganizationPage } from './pages/Organization';
 import { OverviewPage } from './pages/Overview';
 import { SettingsPage } from './pages/Settings';
+import { SourcesPage } from './pages/Sources';
 import { TaskDetailPage } from './pages/TaskDetail';
 import { TasksPage } from './pages/Tasks';
 
@@ -60,6 +65,13 @@ createRoot(document.getElementById('root')!).render(
               }
             >
               <Route index element={<OverviewPage />} />
+              <Route path="leads" element={<LeadsPage />} />
+              <Route path="leads/:id" element={<LeadDetailPage />} />
+              <Route path="sources" element={<SourcesPage />} />
+              <Route path="approvals" element={<ApprovalsPage />} />
+              <Route path="approvals/:id" element={<ApprovalsPage />} />
+              <Route path="marketing" element={<MarketingPage />} />
+              <Route path="marketing/:section/:id" element={<MarketingPage />} />
               <Route path="tasks" element={<TasksPage />} />
               <Route path="tasks/:id" element={<TaskDetailPage />} />
               <Route path="organization" element={<OrganizationPage />} />

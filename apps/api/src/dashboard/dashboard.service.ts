@@ -36,6 +36,24 @@ export const METRIC_DEFINITIONS = {
 export class DashboardService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private async marketingPerformance() {
+    const configured = await this.prisma.analyticsIntegration.count({ where: { isConfigured: true, key: { not: 'manual_import' } } });
+    const imports = await this.prisma.campaignMetricImport.count();
+    if (configured === 0 && imports === 0) {
+      return {
+        measured: false,
+        note: 'No analytics integration is connected and no metric reports have been imported. Figures are not invented.',
+      };
+    }
+    return {
+      measured: true,
+      note:
+        configured > 0
+          ? 'Metrics reflect configured integrations and/or imported reports only.'
+          : 'Metrics reflect imported reports only (no live analytics integration configured).',
+    };
+  }
+
   async metrics(f: DashboardFilters) {
     const created = range(f, 'createdAt');
     const leadWhere: Prisma.LeadWhereInput = { ...created, ...(f.sourceId && { sources: { some: { sourceId: f.sourceId } } }) };
@@ -122,8 +140,9 @@ export class DashboardService {
       marketing: {
         campaignsByStatus: campaignGroups.map((g) => ({ status: g.status, count: g._count._all })),
         assetsPublished,
-        // Reach/engagement/visits come from analytics integrations (Phase 5); until then nothing is reported.
-        performance: { measured: false, note: 'No marketing analytics integration is connected yet.' },
+        attributedLeads: await p.lead.count({ where: { ...leadWhere, attributedCampaignId: { not: null } } }),
+        metricImports: await p.campaignMetricImport.count({ where: range(f, 'importedAt') }),
+        performance: await this.marketingPerformance(),
       },
       tasks: {
         total: taskStatusGroups.reduce((n, g) => n + g._count._all, 0),

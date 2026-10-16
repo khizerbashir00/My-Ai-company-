@@ -1,13 +1,20 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '../generated/prisma/client';
-import type { AgentKind, TaskKind, TaskStatus } from '../generated/prisma/client';
-import { PrismaService } from '../prisma/prisma.service';
+import type { ActorType, AgentKind, TaskKind, TaskStatus } from '../generated/prisma/client';
 import { AuditService } from '../audit/audit.service';
-import { EventsService } from '../events/events.service';
 import type { AuthUser, RequestContext } from '../common/auth.decorators';
 import { Page, toPage } from '../common/pagination';
+import { EventsService } from '../events/events.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { CreateTaskDto, ListTasksQueryDto, TransitionTaskDto, UpdateTaskDto } from './tasks.dto';
 import { checkTransition, isTerminal } from './task-state-machine';
+
+/** Who is performing a task mutation — HTTP handlers pass USER; the AI runner passes AGENT. */
+export type TaskActor =
+  | { type: 'USER'; userId: string }
+  | { type: 'AGENT'; agentId: string; createdByUserId: string }
+  | { type: 'SYSTEM'; createdByUserId?: string };
 
 const KIND_FOR_AGENT: Record<AgentKind, TaskKind> = {
   GENERAL_MANAGER: 'GOAL',
@@ -50,6 +57,7 @@ export class TasksService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly events: EventsService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async list(q: ListTasksQueryDto): Promise<Page<TaskListItem>> {
@@ -87,6 +95,15 @@ export class TasksService {
   }
 
   async create(dto: CreateTaskDto, user: AuthUser, ctx: RequestContext): Promise<{ task: TaskDetail; deduplicated: boolean }> {
+    return this.createAs(dto, { type: 'USER', userId: user.id }, ctx);
+  }
+
+  /** Create a task as a user, agent, or system actor (used by the AI runner for delegated subtasks). */
+  async createAs(
+    dto: CreateTaskDto,
+    actor: TaskActor,
+    ctx?: RequestContext,
+  ): Promise<{ task: TaskDetail; deduplicated: boolean }> {
     if (dto.idempotencyKey) {
       const existing = await this.prisma.task.findUnique({ where: { idempotencyKey: dto.idempotencyKey }, select: { id: true } });
       if (existing) return { task: await this.get(existing.id), deduplicated: true };
@@ -106,6 +123,10 @@ export class TasksService {
       if (found !== dependsOn.length) throw new BadRequestException('One or more dependency tasks do not exist');
     }
 
+    const createdById = actor.type === 'USER' ? actor.userId : actor.createdByUserId;
+    if (!createdById) throw new BadRequestException('Task creation requires a creating user');
+    const { actorType, actorUserId, actorAgentId } = actorFields(actor);
+
     let id: string;
     try {
       id = await this.prisma.$transaction(async (tx) => {
@@ -118,7 +139,7 @@ export class TasksService {
             departmentId,
             assignedAgentId: dto.assignedAgentId ?? null,
             parentTaskId: dto.parentTaskId ?? null,
-            createdById: user.id,
+            createdById,
             dueAt: dto.dueAt ? new Date(dto.dueAt) : null,
             maxAttempts: dto.maxAttempts ?? 3,
             idempotencyKey: dto.idempotencyKey ?? null,
@@ -127,10 +148,27 @@ export class TasksService {
           },
         });
         await tx.taskEvent.create({
-          data: { taskId: task.id, type: 'created', toStatus: 'QUEUED', message: 'Task created', actorType: 'USER', actorUserId: user.id },
+          data: {
+            taskId: task.id,
+            type: 'created',
+            toStatus: 'QUEUED',
+            message: 'Task created',
+            actorType,
+            actorUserId,
+            actorAgentId,
+          },
         });
         await this.audit.record(
-          { actorType: 'USER', actorUserId: user.id, action: 'task.create', entityType: 'task', entityId: task.id, data: { title: task.title, kind }, ctx },
+          {
+            actorType,
+            actorUserId,
+            actorAgentId,
+            action: 'task.create',
+            entityType: 'task',
+            entityId: task.id,
+            data: { title: task.title, kind },
+            ctx,
+          },
           tx,
         );
         return task.id;
@@ -179,6 +217,11 @@ export class TasksService {
   }
 
   async transition(id: string, dto: TransitionTaskDto, user: AuthUser, ctx: RequestContext): Promise<TaskDetail> {
+    return this.transitionAs(id, dto, { type: 'USER', userId: user.id }, ctx);
+  }
+
+  /** Transition a task as a user, agent, or system actor (compare-and-set; used by the AI runner). */
+  async transitionAs(id: string, dto: TransitionTaskDto, actor: TaskActor, ctx?: RequestContext): Promise<TaskDetail> {
     const task = await this.prisma.task.findUnique({
       where: { id },
       include: { dependencies: { select: { dependsOn: { select: { status: true } } } } },
@@ -203,7 +246,12 @@ export class TasksService {
     }
     if (dto.to === 'COMPLETED' || dto.to === 'CANCELLED') data.completedAt = now;
     if (dto.to === 'FAILED') data.errorMessage = dto.message!.trim();
+    if (dto.to === 'AWAITING_APPROVAL' || dto.to === 'QUEUED') {
+      // Clear completion stamp when leaving a finished-looking path (retries / waiting).
+      if (dto.to === 'QUEUED') data.completedAt = null;
+    }
 
+    const { actorType, actorUserId, actorAgentId } = actorFields(actor);
     const cascaded: { id: string; parentTaskId: string | null }[] = [];
     await this.prisma.$transaction(async (tx) => {
       // Compare-and-set: if another actor changed the status meanwhile, nothing is updated.
@@ -217,17 +265,19 @@ export class TasksService {
           fromStatus: task.status,
           toStatus: dto.to,
           message: dto.message?.trim() || `${task.status} → ${dto.to}`,
-          actorType: 'USER',
-          actorUserId: user.id,
+          actorType,
+          actorUserId,
+          actorAgentId,
         },
       });
 
-      if (dto.to === 'CANCELLED') cascaded.push(...(await this.cancelDescendants(tx, id, user.id, now)));
+      if (dto.to === 'CANCELLED') cascaded.push(...(await this.cancelDescendants(tx, id, actor, now)));
 
       await this.audit.record(
         {
-          actorType: 'USER',
-          actorUserId: user.id,
+          actorType,
+          actorUserId,
+          actorAgentId,
           action: 'task.transition',
           entityType: 'task',
           entityId: id,
@@ -240,11 +290,33 @@ export class TasksService {
 
     this.events.emit({ type: 'task.updated', taskId: id, status: dto.to, parentTaskId: task.parentTaskId });
     for (const c of cascaded) this.events.emit({ type: 'task.updated', taskId: c.id, status: 'CANCELLED', parentTaskId: c.parentTaskId });
+
+    if (dto.to === 'FAILED' && task.attempts >= task.maxAttempts) {
+      await this.notifications
+        .notifyCeo({
+          type: 'TASK_FAILED_REPEATEDLY',
+          title: 'Task failed repeatedly',
+          body: `“${task.title}” reached ${task.attempts}/${task.maxAttempts} attempts.`,
+          link: `/tasks/${id}`,
+          dedupeKey: `task-failed-max:${id}:${task.attempts}`,
+        })
+        .catch(() => undefined);
+    }
+
     return this.get(id);
   }
 
+  /** Persist structured AI output on a task (does not change status by itself). */
+  async setOutput(id: string, output: Record<string, unknown>): Promise<void> {
+    await this.prisma.task.update({
+      where: { id },
+      data: { output: output as Prisma.InputJsonValue },
+    });
+  }
+
   /** Cancels every non-terminal descendant (breadth-first). */
-  private async cancelDescendants(tx: Prisma.TransactionClient, rootId: string, userId: string, now: Date) {
+  private async cancelDescendants(tx: Prisma.TransactionClient, rootId: string, actor: TaskActor, now: Date) {
+    const { actorType, actorUserId, actorAgentId } = actorFields(actor);
     const cancelled: { id: string; parentTaskId: string | null }[] = [];
     let frontier = [rootId];
     while (frontier.length) {
@@ -262,8 +334,9 @@ export class TasksService {
             fromStatus: child.status as TaskStatus,
             toStatus: 'CANCELLED',
             message: 'Cancelled because its parent task was cancelled',
-            actorType: 'USER',
-            actorUserId: userId,
+            actorType,
+            actorUserId,
+            actorAgentId,
           },
         });
         cancelled.push({ id: child.id, parentTaskId: child.parentTaskId });
@@ -302,4 +375,14 @@ export class TasksService {
     }
     return { kind, departmentId: agent.departmentId ?? dto.departmentId ?? null };
   }
+}
+
+function actorFields(actor: TaskActor): {
+  actorType: ActorType;
+  actorUserId: string | null;
+  actorAgentId: string | null;
+} {
+  if (actor.type === 'USER') return { actorType: 'USER', actorUserId: actor.userId, actorAgentId: null };
+  if (actor.type === 'AGENT') return { actorType: 'AGENT', actorUserId: null, actorAgentId: actor.agentId };
+  return { actorType: 'SYSTEM', actorUserId: null, actorAgentId: null };
 }

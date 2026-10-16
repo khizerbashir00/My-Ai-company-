@@ -48,6 +48,22 @@ export const STAGE_LABEL: Record<string, string> = {
   DO_NOT_CONTACT: 'Do not contact',
 };
 
+export const STAGE_ORDER = [
+  'NEW',
+  'QUALIFIED',
+  'DRAFT_READY',
+  'AWAITING_APPROVAL',
+  'CONTACTED',
+  'REPLIED',
+  'INTERESTED',
+  'DEMO_REQUESTED',
+  'DEMO_COMPLETED',
+  'NEGOTIATION',
+  'WON',
+  'LOST',
+  'DO_NOT_CONTACT',
+] as const;
+
 const rtf = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
 export function timeAgo(iso: string): string {
   const diff = (new Date(iso).getTime() - Date.now()) / 1000;

@@ -46,8 +46,79 @@ export class AppConfigService {
     };
   }
 
+  /** True when the server can call the AI provider (key + at least one model name). Never includes secrets. */
+  get aiReady(): boolean {
+    return this.aiStatus.apiKeyConfigured && this.aiStatus.routineModel !== null;
+  }
+
+  /** Server-only. Do not put on responses, logs, or audit payloads. */
+  get openaiApiKey(): string | null {
+    return this.optional('OPENAI_API_KEY');
+  }
+
+  /** Redis connection string for BullMQ. Null when background jobs are unavailable. */
+  get redisUrl(): string | null {
+    return this.optional('REDIS_URL');
+  }
+
+  /** Non-secret email provider status for Settings / Approvals UI. */
+  get emailStatus(): {
+    provider: string | null;
+    configured: boolean;
+    fromAddress: string | null;
+    replyTo: string | null;
+    inboundWebhookConfigured: boolean;
+  } {
+    const provider = this.optional('EMAIL_PROVIDER')?.toLowerCase() ?? null;
+    const from = this.optional('EMAIL_FROM');
+    const apiKey = provider === 'resend' ? this.optional('RESEND_API_KEY') : null;
+    return {
+      provider,
+      configured: provider === 'resend' && Boolean(apiKey && from),
+      fromAddress: from,
+      replyTo: this.optional('EMAIL_REPLY_TO'),
+      inboundWebhookConfigured: Boolean(this.optional('RESEND_WEBHOOK_SECRET')),
+    };
+  }
+
+  get resendApiKey(): string | null {
+    return this.optional('RESEND_API_KEY');
+  }
+  get emailFrom(): string | null {
+    return this.optional('EMAIL_FROM');
+  }
+  get emailReplyTo(): string | null {
+    return this.optional('EMAIL_REPLY_TO');
+  }
+  get emailProviderKey(): string | null {
+    return this.optional('EMAIL_PROVIDER')?.toLowerCase() ?? null;
+  }
+  get resendWebhookSecret(): string | null {
+    return this.optional('RESEND_WEBHOOK_SECRET');
+  }
+
+  /** Resolve the model ID for a tier, with optional per-agent override. */
+  resolveModel(tier: 'ROUTINE' | 'ADVANCED', override?: string | null): string | null {
+    if (override?.trim()) return override.trim();
+    if (tier === 'ADVANCED') {
+      return this.optional('OPENAI_MODEL_ADVANCED') ?? this.optional('OPENAI_MODEL');
+    }
+    return this.optional('OPENAI_MODEL');
+  }
+
   /** ConfigService can hand back raw env strings, so blank values are normalized to null here. */
-  private optional(key: 'OPENAI_API_KEY' | 'OPENAI_MODEL' | 'OPENAI_MODEL_ADVANCED' | 'REDIS_URL'): string | null {
+  private optional(
+    key:
+      | 'OPENAI_API_KEY'
+      | 'OPENAI_MODEL'
+      | 'OPENAI_MODEL_ADVANCED'
+      | 'REDIS_URL'
+      | 'EMAIL_PROVIDER'
+      | 'RESEND_API_KEY'
+      | 'EMAIL_FROM'
+      | 'EMAIL_REPLY_TO'
+      | 'RESEND_WEBHOOK_SECRET',
+  ): string | null {
     const v = this.config.get(key, { infer: true }) as string | undefined;
     return v && v.trim() ? v.trim() : null;
   }

@@ -96,6 +96,21 @@ test('tasks created elsewhere appear live without reloading', async ({ page, con
   await expect(page.getByRole('link', { name: 'Weekly competitor pricing check' })).toBeVisible({ timeout: 5000 });
 });
 
+test('leads CRM: create a manual lead and open briefing', async ({ page }) => {
+  await page.goto('/leads');
+  await expect(page.getByRole('heading', { name: 'Leads' })).toBeVisible();
+  await page.getByRole('button', { name: 'New lead' }).click();
+  await page.getByLabel('Company / profile name').fill('Bright Clinic');
+  await page.getByLabel('Original post / listing URL').fill('https://example.com/posts/bright-clinic-site');
+  await page.getByLabel('Requirements').fill('Needs a booking website in React');
+  await page.getByRole('button', { name: 'Save lead' }).click();
+  await expect(page.getByRole('heading', { name: 'Bright Clinic' })).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText('Manual import', { exact: true }).first()).toBeVisible();
+  await page.getByRole('button', { name: 'Client briefing' }).click();
+  await expect(page.getByText('Demo preparation')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'https://example.com/posts/bright-clinic-site' })).toBeVisible();
+});
+
 test('organization chart and editing an agent role', async ({ page }) => {
   await page.goto('/organization');
   await expect(page.getByRole('link', { name: /AI General Manager/ })).toBeVisible();

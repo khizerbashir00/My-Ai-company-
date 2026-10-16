@@ -24,6 +24,8 @@ The browser only ever talks to its own origin. Sessions are an httpOnly, `SameSi
 | `tasks` | Task CRUD, state machine, dependencies, idempotency, cascading cancel |
 | `dashboard` | Metrics from database counts, each with a written definition |
 | `events` | In-process event bus → SSE stream |
+| `ai` | OpenAI provider boundary, model resolution, structured-output validation (secrets never leave the server) |
+| `orchestration` | Task runner, GM plan validation, registry-checked tool execution, agent runs / usage |
 
 Guards run in order: rate limiter (120/min default, 5/min for login and password change) → authentication/RBAC. A global validation pipe strips and rejects unknown fields. A global exception filter returns `{statusCode, error, message, requestId}` and never leaks stack traces, SQL or secrets; unexpected errors are logged server-side with the same request ID.
 

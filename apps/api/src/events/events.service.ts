@@ -4,7 +4,12 @@ import { Observable, Subject } from 'rxjs';
 export type AppEvent =
   | { type: 'task.created'; taskId: string; status: string; parentTaskId: string | null }
   | { type: 'task.updated'; taskId: string; status: string; parentTaskId: string | null }
-  | { type: 'agent.updated'; agentId: string };
+  | { type: 'agent.updated'; agentId: string }
+  | { type: 'lead.created'; leadId: string }
+  | { type: 'lead.updated'; leadId: string }
+  | { type: 'source.scan.updated'; scanRunId: string; connectionId: string; status: string }
+  | { type: 'approval.updated'; approvalId: string; status: string }
+  | { type: 'notification.created'; notificationId: string; userId: string };
 
 /**
  * In-process event bus feeding the live SSE stream.

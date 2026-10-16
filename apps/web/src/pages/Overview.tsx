@@ -135,10 +135,12 @@ function Dashboard({ m, aiReady }: { m: Metrics; aiReady: boolean }) {
             <dl className="divide-y divide-rule">
               <Line label="Content published" value={m.marketing.assetsPublished} />
               <Line label="Campaigns" value={m.marketing.campaignsByStatus.reduce((n, c) => n + c.count, 0)} />
+              <Line label="Attributed leads" value={m.marketing.attributedLeads} />
+              <Line label="Metric imports" value={m.marketing.metricImports} />
             </dl>
             {!m.marketing.performance.measured && (
               <p className="border-t border-rule px-4 py-3 text-sm text-ink-3">
-                Reach, engagement and conversion appear here once an analytics source is connected. Nothing is estimated until then.
+                Reach, engagement and conversion appear here once an analytics source is connected or a report is imported. Nothing is estimated until then.
               </p>
             )}
           </Section>
@@ -150,7 +152,7 @@ function Dashboard({ m, aiReady }: { m: Metrics; aiReady: boolean }) {
 
 function NeedsYou({ failed, waitingTasks, approvals, aiReady }: { failed: number; waitingTasks: number; approvals: number; aiReady: boolean }) {
   const items = [
-    approvals > 0 && { icon: ShieldCheck, tone: 'waiting', text: `${approvals} ${approvals === 1 ? 'action needs' : 'actions need'} your approval`, to: '/tasks' },
+    approvals > 0 && { icon: ShieldCheck, tone: 'waiting', text: `${approvals} ${approvals === 1 ? 'action needs' : 'actions need'} your approval`, to: '/approvals' },
     waitingTasks > 0 && { icon: Hourglass, tone: 'waiting', text: `${waitingTasks} ${waitingTasks === 1 ? 'task is' : 'tasks are'} waiting on you`, to: '/tasks?status=AWAITING_APPROVAL' },
     failed > 0 && { icon: CircleAlert, tone: 'failed', text: `${failed} failed ${failed === 1 ? 'task' : 'tasks'} to review`, to: '/tasks?status=FAILED' },
     !aiReady && { icon: CircleAlert, tone: 'neutral', text: 'AI isn’t configured yet, so managers can’t start work. Add an OpenAI key and model', to: '/settings' },

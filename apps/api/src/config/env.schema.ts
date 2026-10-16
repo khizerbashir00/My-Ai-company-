@@ -18,6 +18,14 @@ export const envSchema = z.object({
   OPENAI_API_KEY: optionalString,
   OPENAI_MODEL: optionalString,
   OPENAI_MODEL_ADVANCED: optionalString,
+  /** Email provider key. Currently supported: "resend". Empty = outreach send disabled. */
+  EMAIL_PROVIDER: optionalString,
+  RESEND_API_KEY: optionalString,
+  /** Verified sender address authorized by the CEO (must match Resend domain). */
+  EMAIL_FROM: optionalString,
+  EMAIL_REPLY_TO: optionalString,
+  /** Optional webhook signing secret for Resend inbound events. */
+  RESEND_WEBHOOK_SECRET: optionalString,
 });
 
 export type Env = z.infer<typeof envSchema>;

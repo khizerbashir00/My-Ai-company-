@@ -93,6 +93,20 @@ enum ConnectionStatus {
   DISABLED
 }
 
+enum ScanRunStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+enum ScanTrigger {
+  SCHEDULE
+  MANUAL
+  AGENT
+}
+
 enum LeadStage {
   NEW
   QUALIFIED
@@ -130,9 +144,26 @@ enum OutreachStatus {
   DRAFT
   AWAITING_APPROVAL
   APPROVED
+  /// CEO-approved content waiting for scheduledFor before send
+  SCHEDULED
   SENT
   FAILED
   CANCELLED
+}
+
+enum ReplyClassification {
+  POSITIVE
+  NEGATIVE
+  NEUTRAL
+  UNSUBSCRIBE
+  DEMO_REQUEST
+  NEEDS_REVIEW
+}
+
+enum ReplyMatchStatus {
+  MATCHED
+  AMBIGUOUS
+  UNMATCHED
 }
 
 enum OutreachEventType {
@@ -177,6 +208,49 @@ enum AssetStatus {
   APPROVED
   PUBLISHED
   REJECTED
+}
+
+enum ResearchProjectStatus {
+  PLANNED
+  ACTIVE
+  COMPLETED
+  ARCHIVED
+}
+
+/// Distinguishes verified research, model suggestions, and estimates — never conflated.
+enum FindingKind {
+  VERIFIED
+  SUGGESTION
+  ESTIMATE
+}
+
+enum ContentChannel {
+  LINKEDIN
+  WEBSITE_ARTICLE
+  CASE_STUDY
+  LANDING_PAGE
+  EMAIL_CAMPAIGN
+  OTHER
+}
+
+enum ContentItemStatus {
+  IDEA
+  SCHEDULED
+  DRAFTING
+  AWAITING_APPROVAL
+  APPROVED
+  PUBLISHED
+  CANCELLED
+}
+
+enum MarketingReportPeriod {
+  DAILY
+  WEEKLY
+}
+
+enum AnalyticsSourceKind {
+  MANUAL_IMPORT
+  CONFIGURED_INTEGRATION
 }
 
 enum ApprovalActionType {
@@ -236,6 +310,7 @@ model User {
   auditLogs          AuditLog[]
   leadScores         LeadScore[]
   projectsConfirmed  Project[]      @relation("ProjectConfirmedBy")
+  contentVersions    ContentVersion[] @relation("ContentVersionAuthor")
 
   @@map("users")
 }
@@ -288,6 +363,8 @@ model AgentDefinition {
   runs        AgentRun[]
   approvals   Approval[]
   auditLogs   AuditLog[]
+  assignedLeads Lead[]
+  marketingReports MarketingReport[]
 
   @@index([departmentId])
   @@index([parentId])
@@ -346,8 +423,10 @@ model Task {
   dependents    TaskDependency[]  @relation("TaskDependedOnBy")
   events        TaskEvent[]
   runs          AgentRun[]
-  approvals     Approval[]
-  campaigns     Campaign[]
+  approvals           Approval[]
+  campaigns           Campaign[]
+  researchProjects    MarketResearchProject[] @relation("ResearchProjectTask")
+  competitorReports   CompetitorReport[]      @relation("CompetitorReportTask")
 
   @@index([status])
   @@index([departmentId])
@@ -476,10 +555,36 @@ model SourceConnection {
   createdAt      DateTime         @default(now()) @map("created_at")
   updatedAt      DateTime         @updatedAt @map("updated_at")
 
-  source Source @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  source   Source          @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  scanRuns SourceScanRun[]
 
   @@unique([sourceId, label])
   @@map("source_connections")
+}
+
+/// One background (or manual) scan of a source connection.
+model SourceScanRun {
+  id            String        @id @default(uuid()) @db.Uuid
+  connectionId  String        @map("connection_id") @db.Uuid
+  status        ScanRunStatus @default(QUEUED)
+  trigger       ScanTrigger   @default(MANUAL)
+  bullJobId     String?       @map("bull_job_id")
+  startedAt     DateTime?     @map("started_at")
+  finishedAt    DateTime?     @map("finished_at")
+  itemsFound    Int           @default(0) @map("items_found")
+  itemsCreated  Int           @default(0) @map("items_created")
+  itemsDeduped  Int           @default(0) @map("items_deduped")
+  itemsSkipped  Int           @default(0) @map("items_skipped")
+  errorMessage  String?       @map("error_message")
+  /// Safe metadata (query used, pages fetched) — never credentials
+  meta          Json?
+  createdAt     DateTime      @default(now()) @map("created_at")
+
+  connection SourceConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@index([connectionId, createdAt])
+  @@index([status, createdAt])
+  @@map("source_scan_runs")
 }
 
 // ─────────────────────────────── Sales ───────────────────────────────
@@ -502,8 +607,12 @@ model Lead {
   stage           LeadStage    @default(NEW)
   intentLabel     IntentLabel? @map("intent_label")
   latestScore     Int?         @map("latest_score")
+  /// Sales agent currently responsible for this lead (manager or worker)
+  assignedAgentId String?      @map("assigned_agent_id") @db.Uuid
   doNotContact    Boolean      @default(false) @map("do_not_contact")
   optedOutAt      DateTime?    @map("opted_out_at")
+  /// When set, scheduled outreach for this lead will not send
+  outreachPausedAt DateTime?   @map("outreach_paused_at")
   demoScheduledAt DateTime?    @map("demo_scheduled_at")
   /// Set only when the CEO confirms the deal
   dealValue       Decimal?     @map("deal_value") @db.Decimal(12, 2)
@@ -512,19 +621,25 @@ model Lead {
   lostAt          DateTime?    @map("lost_at")
   lostReason      String?      @map("lost_reason")
   notes           String       @default("")
+  /// Optional campaign attribution when source data supports it — never invented
+  attributedCampaignId String? @map("attributed_campaign_id") @db.Uuid
   createdAt       DateTime     @default(now()) @map("created_at")
   updatedAt       DateTime     @updatedAt @map("updated_at")
 
-  sources        LeadSource[]
-  scores         LeadScore[]
-  messages       OutreachMessage[]
-  outreachEvents OutreachEvent[]
-  project        Project?
+  assignedAgent       AgentDefinition?  @relation(fields: [assignedAgentId], references: [id], onDelete: SetNull)
+  attributedCampaign  Campaign?         @relation(fields: [attributedCampaignId], references: [id], onDelete: SetNull)
+  sources             LeadSource[]
+  scores              LeadScore[]
+  messages            OutreachMessage[]
+  outreachEvents      OutreachEvent[]
+  inboundReplies      InboundReply[]
+  project             Project?
 
   @@index([stage])
   @@index([intentLabel])
   @@index([createdAt])
   @@index([contactEmail])
+  @@index([assignedAgentId])
   @@map("leads")
 }
 
@@ -584,6 +699,16 @@ model OutreachMessage {
   isFollowUp      Boolean         @default(false) @map("is_follow_up")
   parentMessageId String?         @map("parent_message_id") @db.Uuid
   scheduledFor    DateTime?       @map("scheduled_for")
+  /// Recipient used at send time (must match authorized lead contact)
+  recipientEmail  String?         @map("recipient_email")
+  /// Email provider key, e.g. resend
+  provider        String?
+  /// Provider-assigned message id when sent
+  providerMessageId String?       @map("provider_message_id")
+  deliveryStatus  String?         @map("delivery_status")
+  lastProviderError String?       @map("last_provider_error")
+  /// Approval that authorized this send (if any)
+  approvalId      String?         @map("approval_id") @db.Uuid
   sentAt          DateTime?       @map("sent_at")
   createdAt       DateTime        @default(now()) @map("created_at")
   updatedAt       DateTime        @updatedAt @map("updated_at")
@@ -592,10 +717,42 @@ model OutreachMessage {
   parentMessage OutreachMessage?  @relation("FollowUps", fields: [parentMessageId], references: [id], onDelete: SetNull)
   followUps     OutreachMessage[] @relation("FollowUps")
   events        OutreachEvent[]
+  inboundReplies InboundReply[]
 
   @@index([leadId])
   @@index([status])
+  @@index([status, scheduledFor])
+  @@index([providerMessageId])
   @@map("outreach_messages")
+}
+
+/// Inbound email captured via an authorized provider webhook/integration.
+model InboundReply {
+  id               String             @id @default(uuid()) @db.Uuid
+  leadId           String?            @map("lead_id") @db.Uuid
+  messageId        String?            @map("message_id") @db.Uuid
+  fromEmail        String             @map("from_email")
+  toEmail          String?            @map("to_email")
+  subject          String?
+  bodyText         String             @default("") @map("body_text")
+  provider         String
+  providerMessageId String            @map("provider_message_id")
+  matchStatus      ReplyMatchStatus   @map("match_status")
+  classification   ReplyClassification @default(NEEDS_REVIEW)
+  classificationReason String         @default("") @map("classification_reason")
+  /// Ambiguous candidate lead ids when match is not unique
+  candidateLeadIds String[]           @default([]) @map("candidate_lead_ids")
+  receivedAt       DateTime           @default(now()) @map("received_at")
+  rawSnapshot      Json?              @map("raw_snapshot")
+  createdAt        DateTime           @default(now()) @map("created_at")
+
+  lead    Lead?            @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  message OutreachMessage? @relation(fields: [messageId], references: [id], onDelete: SetNull)
+
+  @@unique([provider, providerMessageId])
+  @@index([leadId, receivedAt])
+  @@index([matchStatus, receivedAt])
+  @@map("inbound_replies")
 }
 
 model OutreachEvent {
@@ -616,10 +773,144 @@ model OutreachEvent {
 
 // ─────────────────────────────── Marketing ───────────────────────────────
 
+/// CEO-configurable brand voice, services, and approved portfolio facts for content drafting.
+model BrandProfile {
+  id                String   @id @default(uuid()) @db.Uuid
+  /// Singleton key — always "default"
+  key               String   @unique @default("default")
+  voiceGuidelines   String   @default("") @map("voice_guidelines")
+  servicesOffered   String[] @default([]) @map("services_offered")
+  portfolioNotes    String   @default("") @map("portfolio_notes")
+  /// Only claims the CEO has approved for use in drafts
+  approvedClaims    String[] @default([]) @map("approved_claims")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  @@map("brand_profiles")
+}
+
+model MarketResearchProject {
+  id                    String                @id @default(uuid()) @db.Uuid
+  name                  String
+  country               String
+  industry              String
+  serviceOffering       String                @map("service_offering")
+  targetCustomerProfile String                @default("") @map("target_customer_profile")
+  status                ResearchProjectStatus @default(PLANNED)
+  notes                 String                @default("")
+  taskId                String?               @map("task_id") @db.Uuid
+  createdAt             DateTime              @default(now()) @map("created_at")
+  updatedAt             DateTime              @updatedAt @map("updated_at")
+
+  task              Task?              @relation("ResearchProjectTask", fields: [taskId], references: [id], onDelete: SetNull)
+  findings          ResearchFinding[]
+  competitorReports CompetitorReport[]
+
+  @@index([status, createdAt])
+  @@index([country, industry])
+  @@map("market_research_projects")
+}
+
+model CompetitorReport {
+  id             String   @id @default(uuid()) @db.Uuid
+  projectId      String   @map("project_id") @db.Uuid
+  competitorName String   @map("competitor_name")
+  summary        String   @default("")
+  researchedAt   DateTime @default(now()) @map("researched_at")
+  taskId         String?  @map("task_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  project  MarketResearchProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  task     Task?                 @relation("CompetitorReportTask", fields: [taskId], references: [id], onDelete: SetNull)
+  findings ResearchFinding[]
+  sources  CompetitorSource[]
+
+  @@index([projectId, researchedAt])
+  @@map("competitor_reports")
+}
+
+model CompetitorSource {
+  id        String   @id @default(uuid()) @db.Uuid
+  reportId  String   @map("report_id") @db.Uuid
+  url       String
+  title     String   @default("")
+  fetchedAt DateTime @default(now()) @map("fetched_at")
+
+  report CompetitorReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([reportId])
+  @@map("competitor_sources")
+}
+
+/// Factual claims must carry evidence URLs when kind=VERIFIED. Suggestions/estimates are labeled.
+model ResearchFinding {
+  id           String       @id @default(uuid()) @db.Uuid
+  projectId    String?      @map("project_id") @db.Uuid
+  reportId     String?      @map("report_id") @db.Uuid
+  claim        String
+  kind         FindingKind  @default(VERIFIED)
+  evidenceUrl  String?      @map("evidence_url")
+  sourceNote   String       @default("") @map("source_note")
+  researchedAt DateTime     @default(now()) @map("researched_at")
+  createdAt    DateTime     @default(now()) @map("created_at")
+
+  project MarketResearchProject? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  report  CompetitorReport?      @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([reportId])
+  @@map("research_findings")
+}
+
+/// Content calendar entry (LinkedIn, articles, case studies, landing pages, email concepts).
+model ContentItem {
+  id           String            @id @default(uuid()) @db.Uuid
+  title        String
+  channel      ContentChannel
+  status       ContentItemStatus @default(IDEA)
+  scheduledFor DateTime?         @map("scheduled_for")
+  campaignId   String?           @map("campaign_id") @db.Uuid
+  currentVersion Int             @default(0) @map("current_version")
+  publishedAt  DateTime?         @map("published_at")
+  createdAt    DateTime          @default(now()) @map("created_at")
+  updatedAt    DateTime          @updatedAt @map("updated_at")
+
+  campaign Campaign?        @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  versions ContentVersion[]
+
+  @@index([status, scheduledFor])
+  @@index([channel, scheduledFor])
+  @@map("content_items")
+}
+
+model ContentVersion {
+  id              String      @id @default(uuid()) @db.Uuid
+  contentItemId   String      @map("content_item_id") @db.Uuid
+  version         Int
+  title           String
+  body            String
+  changeNote      String      @default("") @map("change_note")
+  status          AssetStatus @default(DRAFT)
+  createdByUserId String?     @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime    @default(now()) @map("created_at")
+
+  contentItem   ContentItem @relation(fields: [contentItemId], references: [id], onDelete: Cascade)
+  createdByUser User?       @relation("ContentVersionAuthor", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([contentItemId, version])
+  @@index([contentItemId, createdAt])
+  @@map("content_versions")
+}
+
 model Campaign {
   id                   String         @id @default(uuid()) @db.Uuid
   name                 String
   objective            String         @default("")
+  /// Primary channel label (e.g. linkedin, email, google_ads) — free text, not invented metrics
+  channel              String         @default("")
+  audience             String         @default("")
+  messaging            String         @default("")
   industries           String[]       @default([])
   countries            String[]       @default([])
   services             String[]       @default([])
@@ -634,11 +925,15 @@ model Campaign {
   startDate            DateTime?      @map("start_date")
   endDate              DateTime?      @map("end_date")
   taskId               String?        @map("task_id") @db.Uuid
+  launchedAt           DateTime?      @map("launched_at")
   createdAt            DateTime       @default(now()) @map("created_at")
   updatedAt            DateTime       @updatedAt @map("updated_at")
 
-  task   Task?           @relation(fields: [taskId], references: [id], onDelete: SetNull)
-  assets CampaignAsset[]
+  task           Task?                  @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  assets         CampaignAsset[]
+  contentItems   ContentItem[]
+  metricImports  CampaignMetricImport[]
+  attributedLeads Lead[]
 
   @@index([status])
   @@map("campaigns")
@@ -651,15 +946,101 @@ model CampaignAsset {
   title        String
   content      String
   status       AssetStatus       @default(DRAFT)
+  currentVersion Int             @default(1) @map("current_version")
   scheduledFor DateTime?         @map("scheduled_for")
   publishedAt  DateTime?         @map("published_at")
   createdAt    DateTime          @default(now()) @map("created_at")
   updatedAt    DateTime          @updatedAt @map("updated_at")
 
-  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaign Campaign               @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  versions CampaignAssetVersion[]
 
   @@index([campaignId])
+  @@index([status])
   @@map("campaign_assets")
+}
+
+model CampaignAssetVersion {
+  id        String   @id @default(uuid()) @db.Uuid
+  assetId   String   @map("asset_id") @db.Uuid
+  version   Int
+  title     String
+  content   String
+  changeNote String  @default("") @map("change_note")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  asset CampaignAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@unique([assetId, version])
+  @@map("campaign_asset_versions")
+}
+
+/// Imported or integration-synced campaign metrics — never invented engagement figures.
+model CampaignMetricImport {
+  id         String              @id @default(uuid()) @db.Uuid
+  campaignId String?             @map("campaign_id") @db.Uuid
+  sourceKind AnalyticsSourceKind @map("source_kind")
+  sourceName String              @map("source_name")
+  notes      String              @default("")
+  importedAt DateTime            @default(now()) @map("imported_at")
+  createdAt  DateTime            @default(now()) @map("created_at")
+
+  campaign Campaign?           @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  rows     CampaignMetricRow[]
+
+  @@index([campaignId, importedAt])
+  @@map("campaign_metric_imports")
+}
+
+model CampaignMetricRow {
+  id                String    @id @default(uuid()) @db.Uuid
+  importId          String    @map("import_id") @db.Uuid
+  metricKey         String    @map("metric_key")
+  value             Decimal   @db.Decimal(18, 4)
+  /// Explicit denominator for rates (e.g. clicks÷impressions). Null when not a rate.
+  denominator       Decimal?  @db.Decimal(18, 4)
+  denominatorLabel  String?   @map("denominator_label")
+  periodStart       DateTime? @map("period_start")
+  periodEnd         DateTime? @map("period_end")
+  notes             String    @default("")
+
+  import CampaignMetricImport @relation(fields: [importId], references: [id], onDelete: Cascade)
+
+  @@index([importId])
+  @@map("campaign_metric_rows")
+}
+
+model AnalyticsIntegration {
+  id             String    @id @default(uuid()) @db.Uuid
+  key            String    @unique
+  name           String
+  isConfigured   Boolean   @default(false) @map("is_configured")
+  /// Env var name holding credentials — never the secret itself
+  credentialsEnv String?   @map("credentials_env")
+  notes          String    @default("")
+  lastSyncAt     DateTime? @map("last_sync_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  @@map("analytics_integrations")
+}
+
+model MarketingReport {
+  id                 String                @id @default(uuid()) @db.Uuid
+  period             MarketingReportPeriod
+  periodStart        DateTime              @map("period_start")
+  periodEnd          DateTime              @map("period_end")
+  title              String
+  body               String                @default("")
+  /// Safe snapshot of counted metrics — never secrets
+  metricsSnapshot    Json                  @map("metrics_snapshot")
+  generatedByAgentId String?               @map("generated_by_agent_id") @db.Uuid
+  generatedAt        DateTime              @default(now()) @map("generated_at")
+
+  generatedByAgent AgentDefinition? @relation(fields: [generatedByAgentId], references: [id], onDelete: SetNull)
+
+  @@index([period, periodStart])
+  @@map("marketing_reports")
 }
 
 // ─────────────────────────────── Governance ───────────────────────────────

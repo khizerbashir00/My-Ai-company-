@@ -10,3 +10,5 @@ process.env.CORS_ORIGINS = 'http://localhost:5173';
 process.env.TRUST_PROXY = '1';
 process.env.OPENAI_API_KEY = '';
 process.env.OPENAI_MODEL = '';
+// Keep e2e scans inline — do not depend on a live Redis for connector tests.
+process.env.REDIS_URL = '';

@@ -2,7 +2,7 @@
 
 A control platform where you are the CEO and AI managers run Sales and Marketing for your web development business. You assign goals, AI managers delegate to AI workers, and you review, approve and close deals. Software development after a deal is confirmed stays with you.
 
-**Status: Phase 1 of 6 complete** (scaffolding, auth, database, CEO dashboard, departments and agent definitions, task tracking). See [`docs/milestones/phase-1.md`](docs/milestones/phase-1.md) for the full report and [`docs/architecture.md`](docs/architecture.md) for how it fits together.
+**Status: Phase 3 of 6 complete** (platform + AI execution + Sales CRM). See [`docs/milestones/phase-3.md`](docs/milestones/phase-3.md), earlier milestone reports, and [`docs/architecture.md`](docs/architecture.md).
 
 ## What works today
 
@@ -13,7 +13,7 @@ A control platform where you are the CEO and AI managers run Sales and Marketing
 - Create tasks, goals and subtasks; track them through an explicit state machine with retries, dependencies, cascading cancellation and full history
 - Live updates in the browser via Server-Sent Events
 
-AI execution, lead import, connectors, approvals and reports arrive in Phases 2–6 (listed in the sidebar so the roadmap is visible).
+With `OPENAI_API_KEY` and `OPENAI_MODEL` set, use **Run with AI** on a queued goal or department task to plan and delegate. Use **Leads** for manual CRM, CSV import/export, scoring, pipeline, and outreach drafts (sending and live connectors arrive later).
 
 ## Stack
 

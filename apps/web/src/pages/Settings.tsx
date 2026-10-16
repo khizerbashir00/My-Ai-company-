@@ -31,8 +31,31 @@ export function SettingsPage() {
               <p className="mt-3 max-w-[64ch] text-ink-2">
                 The key stays on the server and is never sent to the browser. Set <code className="rounded bg-sunken px-1">OPENAI_API_KEY</code>,{' '}
                 <code className="rounded bg-sunken px-1">OPENAI_MODEL</code> and optionally <code className="rounded bg-sunken px-1">OPENAI_MODEL_ADVANCED</code>{' '}
-                in <code className="rounded bg-sunken px-1">apps/api/.env</code>, then restart the API. Use model IDs your OpenAI project has access to. AI
-                execution is switched on in Phase 2.
+                in <code className="rounded bg-sunken px-1">apps/api/.env</code>, then restart the API. Use model IDs your OpenAI project has access to. When
+                the key and model are set, use <span className="font-medium">Run with AI</span> on a queued task to execute the assigned agent.
+              </p>
+            </div>
+          )}
+        </Section>
+
+        <Section title="Email (Resend)">
+          {status.data && (
+            <div className="px-4 py-4 text-sm">
+              <dl className="divide-y divide-rule rounded-md border border-rule">
+                <Row label="Provider">{status.data.email.provider ?? 'Not set'}</Row>
+                <Row label="Configured">
+                  <span className={status.data.email.configured ? 'text-st-done' : 'text-st-waiting'}>
+                    {status.data.email.configured ? 'Ready' : 'Not ready — live send disabled'}
+                  </span>
+                </Row>
+                <Row label="From">{status.data.email.fromAddress ?? '—'}</Row>
+                <Row label="Inbound webhook">{status.data.email.inboundWebhookConfigured ? 'Secret set' : 'Optional secret not set'}</Row>
+              </dl>
+              <p className="mt-3 max-w-[64ch] text-ink-2">
+                Set <code className="rounded bg-sunken px-1">EMAIL_PROVIDER=resend</code>,{' '}
+                <code className="rounded bg-sunken px-1">RESEND_API_KEY</code>, and a verified{' '}
+                <code className="rounded bg-sunken px-1">EMAIL_FROM</code> on the CEO mailbox domain. See{' '}
+                <code className="rounded bg-sunken px-1">docs/milestones/phase-5-outreach.md</code>. Do not claim live delivery until configured and tested.
               </p>
             </div>
           )}
@@ -53,7 +76,11 @@ export function SettingsPage() {
             </ul>
           )}
           <p className="border-t border-rule px-4 py-3 text-sm text-ink-3">
-            Connectors for platforms such as Reddit, job boards or freelance marketplaces are added in Phase 4, using only official APIs or other permitted access.
+            Manage connector configuration, scans, and history under{' '}
+            <a className="font-medium text-brand hover:underline" href="/sources">
+              Sources
+            </a>
+            . Only implemented, authorized connectors can scan — Reddit, LinkedIn, Facebook, X, and freelance marketplaces are not connected unless a tested connector ships.
           </p>
         </Section>
 

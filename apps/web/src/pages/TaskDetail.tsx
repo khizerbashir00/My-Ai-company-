@@ -101,7 +101,7 @@ function TaskView({ task }: { task: TaskDetail }) {
           }
         >
           {task.subtasks.length === 0 ? (
-            <p className="px-4 py-4 text-sm text-ink-3">None yet. Managers create subtasks for their workers once AI execution is switched on (Phase 2).</p>
+            <p className="px-4 py-4 text-sm text-ink-3">None yet. Use Run with AI on a goal or department task to let managers create subtasks.</p>
           ) : (
             <ul className="divide-y divide-rule">
               {task.subtasks.map((s) => (
@@ -199,12 +199,17 @@ function TaskView({ task }: { task: TaskDetail }) {
 
         <Section title="AI runs">
           {task.runs.length === 0 ? (
-            <Empty title="No runs yet">Model calls, token usage and tool calls for this task will be listed here.</Empty>
+            <Empty title="No runs yet">Model calls, token usage and tool calls for this task will be listed here. Use Run with AI on a queued task when the server has OpenAI credentials.</Empty>
           ) : (
             <ul className="divide-y divide-rule text-sm">
               {task.runs.map((r) => (
                 <li key={r.id} className="px-4 py-2.5">
                   {r.agent.name}, {r.model} ({r.status.toLowerCase()})
+                  {(r.inputTokens != null || r.outputTokens != null) && (
+                    <span className="block text-[13px] text-ink-3">
+                      tokens in {r.inputTokens ?? '—'} / out {r.outputTokens ?? '—'}
+                    </span>
+                  )}
                 </li>
               ))}
             </ul>
@@ -231,14 +236,34 @@ function Actions({ task }: { task: TaskDetail }) {
       setReason('');
     },
   });
+  const runAi = useMutation({
+    mutationFn: () =>
+      api.post<{ task: TaskDetail; message: string; deduplicated: boolean }>(`/orchestration/tasks/${task.id}/run`, {
+        cascade: true,
+        maxDepth: 2,
+      }),
+    onSuccess: (body) => {
+      qc.setQueryData(['task', task.id], body.task);
+      void qc.invalidateQueries({ queryKey: ['tasks'] });
+      void qc.invalidateQueries({ queryKey: ['metrics'] });
+      void qc.invalidateQueries({ queryKey: ['task', task.id] });
+    },
+  });
 
   const unmet = task.dependencies.filter((d) => d.dependsOn.status !== 'COMPLETED').length;
   const targets = TASK_TRANSITIONS[task.status];
   const retryBlocked = task.status === 'FAILED' && task.attempts >= task.maxAttempts;
+  const canRunAi =
+    Boolean(task.assignedAgent) && (task.status === 'QUEUED' || (task.status === 'FAILED' && !retryBlocked)) && unmet === 0;
 
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
+        {canRunAi && (
+          <Button variant="primary" disabled={runAi.isPending || move.isPending} onClick={() => runAi.mutate()}>
+            {runAi.isPending ? 'Running…' : 'Run with AI'}
+          </Button>
+        )}
         {targets
           .filter((to) => to !== 'CANCELLED')
           .map((to) => {
@@ -288,7 +313,7 @@ function Actions({ task }: { task: TaskDetail }) {
           </Button>
         </form>
       )}
-      <ErrorNote error={move.error} />
+      <ErrorNote error={move.error ?? runAi.error} />
     </div>
   );
 }

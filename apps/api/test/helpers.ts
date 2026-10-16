@@ -4,18 +4,26 @@ import * as bcrypt from 'bcryptjs';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/app.setup';
+import { AI_PROVIDER } from '../src/ai/ai.types';
+import { FakeAiProvider } from '../src/ai/fake-ai.provider';
 import { seedDatabase } from '../src/database/seed';
 import { PrismaService } from '../src/prisma/prisma.service';
 
 export const CEO = { email: 'ceo@example.test', password: 'correct-horse-battery-staple', name: 'Test CEO' };
 export const VIEWER = { email: 'viewer@example.test', password: 'viewer-password-123', name: 'Test Viewer' };
 
-export async function createTestApp(): Promise<{ app: INestApplication; prisma: PrismaService }> {
-  const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+export async function createTestApp(opts?: {
+  fakeAi?: FakeAiProvider;
+}): Promise<{ app: INestApplication; prisma: PrismaService; fakeAi?: FakeAiProvider }> {
+  const builder = Test.createTestingModule({ imports: [AppModule] });
+  if (opts?.fakeAi) {
+    builder.overrideProvider(AI_PROVIDER).useValue(opts.fakeAi);
+  }
+  const moduleRef = await builder.compile();
   const app = moduleRef.createNestApplication({ bodyParser: false });
   configureApp(app);
   await app.init();
-  return { app, prisma: app.get(PrismaService) };
+  return { app, prisma: app.get(PrismaService), fakeAi: opts?.fakeAi };
 }
 
 /** Empties every application table, then seeds the default org plus a CEO and a read-only viewer. */
