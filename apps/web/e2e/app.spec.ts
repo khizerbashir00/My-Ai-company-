@@ -138,3 +138,31 @@ test('organization chart and editing an agent role', async ({ page }) => {
   await expect(page.getByLabel('Instructions')).toHaveValue(/prospect’s own words/);
   await expect(page.getByLabel(/^outreach\.send/)).toBeChecked();
 });
+
+test('control center: stop and start company workflows for real, with honest blockers', async ({ page }) => {
+  await page.goto('/control');
+  await expect(page.getByRole('heading', { name: 'Control Center' })).toBeVisible();
+  await expect(page.getByTestId('workflow-lead-source-scans')).toContainText('On · idle');
+  await expect(page.getByTestId('social-linkedin')).toContainText('Needs setup');
+  await expect(page.getByTestId('social-linkedin')).toContainText('LINKEDIN_CLIENT_ID');
+
+  // Stop All is two-step, then every workflow reports Stopped from the server.
+  await page.getByRole('button', { name: 'Stop All' }).click();
+  await page.getByRole('button', { name: 'Confirm Stop All' }).click();
+  await expect(page.getByTestId('control-result')).toContainText('Stop All: 3/3 succeeded.');
+  for (const key of ['ai-task-worker', 'lead-source-scans', 'outreach-follow-ups']) {
+    await expect(page.getByTestId(`workflow-${key}`)).toContainText('Stopped');
+  }
+
+  // Start All: no AI key in the test server, so the AI worker is honestly refused.
+  await page.getByRole('button', { name: 'Start All' }).click();
+  await expect(page.getByTestId('control-result')).toContainText('AI provider is not configured');
+  await expect(page.getByTestId('workflow-lead-source-scans')).not.toContainText('Stopped');
+  await expect(page.getByTestId('workflow-ai-task-worker')).toContainText('Stopped');
+  await expect(page.getByTestId('control-log')).toContainText('Start All');
+
+  // Survives a reload: state comes from the server, not the UI.
+  await page.reload();
+  await expect(page.getByTestId('workflow-ai-task-worker')).toContainText('Stopped');
+  await expect(page.getByTestId('workflow-outreach-follow-ups')).toContainText('On · idle');
+});

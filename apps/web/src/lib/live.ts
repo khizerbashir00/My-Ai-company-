@@ -90,6 +90,19 @@ export function useLiveUpdates(enabled: boolean): LiveState {
       source.addEventListener('approval.updated', onApproval);
       source.addEventListener('notification.created', onNotification);
       source.addEventListener('message.created', onMessage);
+      const onControl = () => {
+        void qc.invalidateQueries({ queryKey: ['control-status'] });
+      };
+      const onSocial = () => {
+        void qc.invalidateQueries({ queryKey: ['control-status'] });
+        void qc.invalidateQueries({ queryKey: ['system-status'] });
+      };
+      source.addEventListener('control.updated', onControl);
+      source.addEventListener('social.updated', onSocial);
+      // Task and scan changes also move Control Center numbers.
+      source.addEventListener('task.updated', onControl);
+      source.addEventListener('task.created', onControl);
+      source.addEventListener('source.scan.updated', onControl);
     };
 
     const connect = () => {

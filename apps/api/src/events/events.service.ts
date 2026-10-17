@@ -10,7 +10,9 @@ export type AppEvent =
   | { type: 'source.scan.updated'; scanRunId: string; connectionId: string; status: string }
   | { type: 'approval.updated'; approvalId: string; status: string }
   | { type: 'notification.created'; notificationId: string; userId: string }
-  | { type: 'message.created'; threadId: string; agentId: string };
+  | { type: 'message.created'; threadId: string; agentId: string }
+  | { type: 'control.updated'; reason: string }
+  | { type: 'social.updated'; platform: string };
 
 /**
  * In-process event bus feeding the live SSE stream.

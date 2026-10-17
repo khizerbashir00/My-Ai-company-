@@ -9,6 +9,8 @@ import { AuthModule } from './auth/auth.module';
 import { AppConfigModule } from './config/config.module';
 import { AppConfigService } from './config/app-config.service';
 import { ConnectorsModule } from './connectors/connectors.module';
+import { ControlCoreModule } from './control/control-core';
+import { ControlModule } from './control/control.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { DepartmentsModule } from './departments/departments.module';
 import { EmailModule } from './email/email.module';
@@ -20,6 +22,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { OrchestrationModule } from './orchestration/orchestration.module';
 import { OutreachModule } from './outreach/outreach.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { SocialModule } from './social/social.module';
 import { SourcesModule } from './sources/sources.module';
 import { SystemController } from './system/system.controller';
 import { TasksModule } from './tasks/tasks.module';
@@ -36,6 +39,7 @@ import { TasksModule } from './tasks/tasks.module';
     PrismaModule,
     AuditModule,
     EventsModule,
+    ControlCoreModule,
     AuthModule,
     AiModule,
     EmailModule,
@@ -51,6 +55,8 @@ import { TasksModule } from './tasks/tasks.module';
     MarketingModule,
     OrchestrationModule,
     DashboardModule,
+    SocialModule,
+    ControlModule,
   ],
   controllers: [SystemController],
   providers: [

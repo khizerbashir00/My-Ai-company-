@@ -11,7 +11,7 @@ import { SourcesService } from './sources.service';
   imports: [LeadsModule, TasksModule],
   controllers: [SourcesController],
   providers: [ScanService, ScanQueueService, ScanSchedulerService, SourcesService],
-  exports: [SourcesService, ScanService, ScanQueueService],
+  exports: [SourcesService, ScanService, ScanQueueService, ScanSchedulerService],
 })
 export class SourcesModule implements OnModuleInit {
   constructor(private readonly sources: SourcesService) {}

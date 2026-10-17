@@ -131,6 +131,35 @@ export class AppConfigService {
     return this.optional('RESEND_WEBHOOK_SECRET');
   }
 
+  /** Browser-facing origin used to build OAuth redirect URIs. Falls back to the first CORS origin. */
+  get publicAppUrl(): string {
+    const explicit = this.config.get('PUBLIC_APP_URL', { infer: true }) as string | undefined;
+    return (explicit && explicit.trim()) || this.corsOrigins[0] || `http://localhost:${this.port}`;
+  }
+
+  /** Server-only raw value of a social/OAuth env var (client ids, secrets, scopes). Never serialize. */
+  socialEnv(
+    key:
+      | 'TOKEN_ENCRYPTION_KEY'
+      | 'LINKEDIN_CLIENT_ID'
+      | 'LINKEDIN_CLIENT_SECRET'
+      | 'LINKEDIN_SCOPES'
+      | 'FACEBOOK_APP_ID'
+      | 'FACEBOOK_APP_SECRET'
+      | 'FACEBOOK_GRAPH_VERSION'
+      | 'FACEBOOK_SCOPES'
+      | 'REDDIT_CLIENT_ID'
+      | 'REDDIT_CLIENT_SECRET'
+      | 'REDDIT_SCOPES'
+      | 'REDDIT_USER_AGENT'
+      | 'X_CLIENT_ID'
+      | 'X_CLIENT_SECRET'
+      | 'X_SCOPES',
+  ): string | null {
+    const v = this.config.get(key, { infer: true }) as string | undefined;
+    return v && v.trim() ? v.trim() : null;
+  }
+
   /** Resolve the model ID for a tier, with optional per-agent override. */
   resolveModel(tier: 'ROUTINE' | 'ADVANCED', override?: string | null): string | null {
     if (override?.trim()) return override.trim();

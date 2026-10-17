@@ -8,16 +8,22 @@ import { AI_PROVIDER } from '../src/ai/ai.types';
 import { FakeAiProvider } from '../src/ai/fake-ai.provider';
 import { seedDatabase } from '../src/database/seed';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { SOCIAL_HTTP, type SocialHttp } from '../src/social/social-http';
 
 export const CEO = { email: 'ceo@example.test', password: 'correct-horse-battery-staple', name: 'Test CEO' };
 export const VIEWER = { email: 'viewer@example.test', password: 'viewer-password-123', name: 'Test Viewer' };
 
 export async function createTestApp(opts?: {
   fakeAi?: FakeAiProvider;
+  /** Stand-in for LinkedIn/Facebook/Reddit/X OAuth endpoints (no network in tests). */
+  socialHttp?: SocialHttp;
 }): Promise<{ app: INestApplication; prisma: PrismaService; fakeAi?: FakeAiProvider }> {
   const builder = Test.createTestingModule({ imports: [AppModule] });
   if (opts?.fakeAi) {
     builder.overrideProvider(AI_PROVIDER).useValue(opts.fakeAi);
+  }
+  if (opts?.socialHttp) {
+    builder.overrideProvider(SOCIAL_HTTP).useValue(opts.socialHttp);
   }
   const moduleRef = await builder.compile();
   const app = moduleRef.createNestApplication({ bodyParser: false });

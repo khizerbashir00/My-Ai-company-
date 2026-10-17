@@ -12,6 +12,9 @@ A control platform where you are the CEO and AI managers run Sales and Marketing
 - Edit any role's instructions, model tier, token limit, tools and permissions — validated against a server-side registry, with sensitive actions locked behind your approval
 - Create tasks, goals and subtasks; track them through an explicit state machine with retries, dependencies, cascading cancellation and full history
 - Live updates in the browser via Server-Sent Events
+- **Control Center** (`/control`): Connect All / Start All / Stop All / Restart Failed plus per-workflow switches, all acting on the server (persisted, audited). Live status of every AI agent, person, background job and social connection, with progress, errors and an operations log
+- **Social connections**: official OAuth for LinkedIn, Facebook, Reddit and X — encrypted tokens, automatic refresh, live **Test**, disconnect with provider revoke
+- **Crash-safe**: work interrupted by a restart is recovered as retryable instead of hanging in RUNNING forever
 
 With `OPENAI_API_KEY` and `OPENAI_MODEL` set, use **Run with AI** on a queued goal or department task to plan and delegate. Use **Leads** for manual CRM, CSV import/export, scoring, pipeline, and outreach drafts (sending and live connectors arrive later).
 
@@ -98,6 +101,9 @@ All settings live in `apps/api/.env` (template: [`.env.example`](.env.example)).
 | `CEO_EMAIL`, `CEO_NAME`, `CEO_PASSWORD` | Used once by `db:seed` to create your account |
 | `OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_MODEL_ADVANCED` | AI provider (used from Phase 2). Use model IDs your OpenAI project can access |
 | `REDIS_URL` | Background jobs (from Phase 4) |
+| `PUBLIC_APP_URL` | Origin you open HQ at; OAuth redirect URIs are built from it (default: first `CORS_ORIGINS`) |
+| `TOKEN_ENCRYPTION_KEY` | 32 bytes base64 (`openssl rand -base64 32`); encrypts OAuth tokens. Required in production for social connections |
+| `LINKEDIN_CLIENT_ID/SECRET`, `FACEBOOK_APP_ID/SECRET`, `X_CLIENT_ID/SECRET` | Social OAuth apps (Reddit reuses `REDDIT_CLIENT_ID/SECRET`). Optional `*_SCOPES`, `FACEBOOK_GRAPH_VERSION` |
 
 ## Repository layout
 
