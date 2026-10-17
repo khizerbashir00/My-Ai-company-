@@ -27,6 +27,7 @@ export type PermissionKey =
   | 'content.publish'
   | 'analytics.read'
   | 'notifications.send'
+  | 'messages.send'
   | 'files.share_sensitive'
   | 'records.bulk_delete'
   | 'customer.commit'
@@ -62,6 +63,7 @@ export const PERMISSIONS: Record<PermissionKey, PermissionDefinition> = {
   'content.publish': { key: 'content.publish', description: 'Publish marketing content externally', agentGrantable: true, approvalLocked: true },
   'analytics.read': { key: 'analytics.read', description: 'Read campaign and pipeline analytics', agentGrantable: true, approvalLocked: false },
   'notifications.send': { key: 'notifications.send', description: 'Send in-app notifications to the CEO', agentGrantable: true, approvalLocked: false },
+  'messages.send': { key: 'messages.send', description: 'Post a message into the CEO team inbox', agentGrantable: true, approvalLocked: false },
   'files.share_sensitive': { key: 'files.share_sensitive', description: 'Share sensitive files externally', agentGrantable: true, approvalLocked: true },
   'records.bulk_delete': { key: 'records.bulk_delete', description: 'Delete records in bulk', agentGrantable: true, approvalLocked: true },
   'customer.commit': { key: 'customer.commit', description: 'Make commitments to customers (scope, price, dates)', agentGrantable: true, approvalLocked: true },
@@ -87,7 +89,8 @@ export type ToolName =
   | 'create_content_draft'
   | 'request_publish_content'
   | 'read_analytics'
-  | 'notify_ceo';
+  | 'notify_ceo'
+  | 'message_ceo';
 
 export interface ToolDefinition {
   name: ToolName;
@@ -117,6 +120,7 @@ export const TOOLS: Record<ToolName, ToolDefinition> = {
   request_publish_content: { name: 'request_publish_content', description: 'Request approval to publish content externally', requires: 'content.publish', availableFromPhase: 6 },
   read_analytics: { name: 'read_analytics', description: 'Read measured campaign and pipeline metrics', requires: 'analytics.read', availableFromPhase: 6 },
   notify_ceo: { name: 'notify_ceo', description: 'Send a de-duplicated in-app notification to the CEO', requires: 'notifications.send', availableFromPhase: 4 },
+  message_ceo: { name: 'message_ceo', description: 'Post a conversational update into the CEO Messages inbox', requires: 'messages.send', availableFromPhase: 6 },
 };
 
 export const isPermissionKey = (v: string): v is PermissionKey => Object.prototype.hasOwnProperty.call(PERMISSIONS, v);

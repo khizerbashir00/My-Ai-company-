@@ -1,5 +1,6 @@
 import { Controller, Get, ServiceUnavailableException } from '@nestjs/common';
 import { SkipThrottle } from '@nestjs/throttler';
+import IORedis from 'ioredis';
 import { Public } from '../common/auth.decorators';
 import { AppConfigService } from '../config/app-config.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -11,20 +12,57 @@ export class SystemController {
     private readonly config: AppConfigService,
   ) {}
 
-  /** Liveness + database check for Docker/uptime monitors. Reveals nothing sensitive. */
+  /** Process liveness — no dependency checks (for Docker HEALTHCHECK / kill switches). */
+  @Public()
+  @SkipThrottle()
+  @Get('health/live')
+  live() {
+    return { status: 'ok', time: new Date().toISOString() };
+  }
+
+  /** Readiness — database required; Redis checked when REDIS_URL is set. */
+  @Public()
+  @SkipThrottle()
+  @Get('health/ready')
+  async ready() {
+    const checks: Record<string, 'up' | 'down' | 'skipped'> = { database: 'down', redis: 'skipped' };
+    try {
+      await this.prisma.$queryRaw`SELECT 1`;
+      checks.database = 'up';
+    } catch {
+      throw new ServiceUnavailableException({ status: 'degraded', checks, message: 'Database unavailable' });
+    }
+
+    if (this.config.redisUrl) {
+      const redis = new IORedis(this.config.redisUrl, {
+        maxRetriesPerRequest: 1,
+        connectTimeout: 2_000,
+        lazyConnect: true,
+      });
+      try {
+        await redis.connect();
+        const pong = await redis.ping();
+        checks.redis = pong === 'PONG' ? 'up' : 'down';
+      } catch {
+        checks.redis = 'down';
+        throw new ServiceUnavailableException({ status: 'degraded', checks, message: 'Redis unavailable' });
+      } finally {
+        redis.disconnect();
+      }
+    }
+
+    return { status: 'ok', checks, time: new Date().toISOString() };
+  }
+
+  /** Back-compat alias used by older monitors and Playwright. */
   @Public()
   @SkipThrottle()
   @Get('health')
   async health() {
-    try {
-      await this.prisma.$queryRaw`SELECT 1`;
-    } catch {
-      throw new ServiceUnavailableException('Database unavailable');
-    }
-    return { status: 'ok', time: new Date().toISOString() };
+    return this.ready();
   }
 
-  /** Which sources and AI settings are configured — booleans and model names only, never keys. */
+  /** Ops snapshot for the CEO UI — booleans and counts only, never secrets. */
   @Get('system/status')
   async status() {
     const sources = await this.prisma.source.findMany({
@@ -43,10 +81,32 @@ export class SystemController {
         },
       },
     });
+
+    const [tasksFailed, tasksAwaiting, pendingApprovals, unreadCeo] = await Promise.all([
+      this.prisma.task.count({ where: { status: 'FAILED' } }),
+      this.prisma.task.count({ where: { status: 'AWAITING_APPROVAL' } }),
+      this.prisma.approval.count({ where: { status: 'PENDING' } }),
+      this.prisma.notification.count({
+        where: { readAt: null, user: { role: 'CEO', isActive: true } },
+      }),
+    ]);
+
     return {
       ai: this.config.aiStatus,
       email: this.config.emailStatus,
       redisConfigured: Boolean(this.config.redisUrl),
+      limits: {
+        taskDefaultMaxAttempts: this.config.taskDefaultMaxAttempts,
+        scanJobAttempts: this.config.scanJobAttempts,
+        throttleLimit: this.config.throttleLimit,
+        aiDailyEstimatedUsdBudget: this.config.aiDailyEstimatedUsdBudget,
+      },
+      monitoring: {
+        tasksFailed,
+        tasksAwaitingApproval: tasksAwaiting,
+        pendingApprovals,
+        unreadCeoNotifications: unreadCeo,
+      },
       sources: sources.map((s) => ({
         id: s.id,
         key: s.key,

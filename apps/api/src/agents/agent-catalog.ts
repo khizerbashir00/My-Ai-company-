@@ -66,8 +66,8 @@ export const AGENTS: AgentSeed[] = [
 You may not change your own or any agent's permissions, and you may not bypass approvals.
 ${SHARED_RULES}`,
     reportingResponsibilities: 'Daily and weekly CEO reports; immediate escalation of blocked tasks, repeated failures and pending approvals.',
-    tools: ['delegate_task', 'submit_result', 'read_leads', 'read_analytics', 'generate_report', 'notify_ceo'],
-    permissions: ['tasks.read', 'tasks.delegate', 'tasks.report', 'leads.read', 'analytics.read', 'reports.generate', 'notifications.send'],
+    tools: ['delegate_task', 'submit_result', 'read_leads', 'read_analytics', 'generate_report', 'notify_ceo', 'message_ceo'],
+    permissions: ['tasks.read', 'tasks.delegate', 'tasks.report', 'leads.read', 'analytics.read', 'reports.generate', 'notifications.send', 'messages.send'],
   },
   // ───────────── Sales ─────────────
   {
@@ -84,8 +84,8 @@ Prioritize explicit requests for websites, web apps, React, e-commerce or MVP de
 Respect do-not-contact and opt-out flags at all times.
 ${SHARED_RULES}`,
     reportingResponsibilities: 'Summarize leads found, qualified, drafted and contacted; highlight high-intent leads and replies.',
-    tools: ['delegate_task', 'submit_result', 'read_leads', 'update_lead_stage', 'read_analytics', 'notify_ceo'],
-    permissions: ['tasks.read', 'tasks.delegate', 'tasks.report', 'leads.read', 'crm.update', 'analytics.read', 'notifications.send'],
+    tools: ['delegate_task', 'submit_result', 'read_leads', 'update_lead_stage', 'read_analytics', 'notify_ceo', 'message_ceo'],
+    permissions: ['tasks.read', 'tasks.delegate', 'tasks.report', 'leads.read', 'crm.update', 'analytics.read', 'notifications.send', 'messages.send'],
   },
   {
     key: 'lead_research_worker',
@@ -99,8 +99,8 @@ ${SHARED_RULES}`,
 Skip anything you cannot attribute to a source URL.
 ${SHARED_RULES}`,
     reportingResponsibilities: 'Returns a list of lead candidates with source evidence to the Sales Manager.',
-    tools: ['search_lead_sources', 'save_lead', 'read_leads', 'submit_result'],
-    permissions: ['tasks.read', 'tasks.report', 'leads.discover', 'leads.write', 'leads.read'],
+    tools: ['search_lead_sources', 'save_lead', 'read_leads', 'submit_result', 'message_ceo'],
+    permissions: ['tasks.read', 'tasks.report', 'leads.discover', 'leads.write', 'leads.read', 'messages.send'],
   },
   {
     key: 'lead_qualification_worker',
@@ -114,8 +114,8 @@ ${SHARED_RULES}`,
 Give a reason for every criterion. Label High, Medium, Low or Needs review. A high score is a prioritization signal, not a prediction of purchase.
 ${SHARED_RULES}`,
     reportingResponsibilities: 'Returns scores, labels and per-criterion reasons.',
-    tools: ['read_leads', 'save_lead_score', 'submit_result'],
-    permissions: ['tasks.read', 'tasks.report', 'leads.read', 'leads.score'],
+    tools: ['read_leads', 'save_lead_score', 'submit_result', 'message_ceo'],
+    permissions: ['tasks.read', 'tasks.report', 'leads.read', 'leads.score', 'messages.send'],
   },
   {
     key: 'company_research_worker',
@@ -128,8 +128,8 @@ ${SHARED_RULES}`,
     instructions: `Research the company's public website and profiles. Report what they do, current site/tech observations, and likely needs — each with a source link and access time.
 ${SHARED_RULES}`,
     reportingResponsibilities: 'Returns a sourced company brief used for outreach and CEO demo briefings.',
-    tools: ['read_leads', 'fetch_public_page', 'submit_result'],
-    permissions: ['tasks.read', 'tasks.report', 'leads.read', 'research.read_public'],
+    tools: ['read_leads', 'fetch_public_page', 'submit_result', 'message_ceo'],
+    permissions: ['tasks.read', 'tasks.report', 'leads.read', 'research.read_public', 'messages.send'],
   },
   {
     key: 'outreach_writing_worker',
@@ -143,8 +143,8 @@ ${SHARED_RULES}`,
 No invented familiarity, no false claims, no mass templates. Include the portfolio link only if one is configured. Always include a short rationale.
 ${SHARED_RULES}`,
     reportingResponsibilities: 'Returns draft subject/body/rationale for CEO review.',
-    tools: ['read_leads', 'create_outreach_draft', 'submit_result'],
-    permissions: ['tasks.read', 'tasks.report', 'leads.read', 'outreach.draft'],
+    tools: ['read_leads', 'create_outreach_draft', 'submit_result', 'message_ceo'],
+    permissions: ['tasks.read', 'tasks.report', 'leads.read', 'outreach.draft', 'messages.send'],
   },
   {
     key: 'follow_up_worker',
@@ -157,8 +157,8 @@ ${SHARED_RULES}`,
     instructions: `Identify follow-ups that are due. Never follow up with opted-out or do-not-contact leads, and stop after a reply unless the CEO asks otherwise. Respect each channel's contact rules. Record every outreach event.
 ${SHARED_RULES}`,
     reportingResponsibilities: 'Returns due follow-ups and their drafts.',
-    tools: ['read_leads', 'schedule_follow_up', 'create_outreach_draft', 'submit_result'],
-    permissions: ['tasks.read', 'tasks.report', 'leads.read', 'outreach.follow_up', 'outreach.draft'],
+    tools: ['read_leads', 'schedule_follow_up', 'create_outreach_draft', 'submit_result', 'message_ceo'],
+    permissions: ['tasks.read', 'tasks.report', 'leads.read', 'outreach.follow_up', 'outreach.draft', 'messages.send'],
   },
   {
     key: 'crm_reporting_worker',
@@ -171,8 +171,8 @@ ${SHARED_RULES}`,
     instructions: `Update stages only when evidence supports it (e.g. a recorded reply). Never mark a deal Won — only the CEO confirms deals. Produce pipeline reports from database records only.
 ${SHARED_RULES}`,
     reportingResponsibilities: 'Returns pipeline changes and sales report summaries.',
-    tools: ['read_leads', 'update_lead_stage', 'read_analytics', 'generate_report', 'submit_result'],
-    permissions: ['tasks.read', 'tasks.report', 'leads.read', 'crm.update', 'analytics.read', 'reports.generate'],
+    tools: ['read_leads', 'update_lead_stage', 'read_analytics', 'generate_report', 'submit_result', 'message_ceo'],
+    permissions: ['tasks.read', 'tasks.report', 'leads.read', 'crm.update', 'analytics.read', 'reports.generate', 'messages.send'],
   },
   // ───────────── Marketing ─────────────
   {
@@ -188,8 +188,8 @@ Check that research cites sources with timestamps and that analytics separate me
 Nothing is published and no money is spent without CEO approval.
 ${SHARED_RULES}`,
     reportingResponsibilities: 'Summarize research findings, proposals awaiting approval and measured campaign results.',
-    tools: ['delegate_task', 'submit_result', 'read_analytics', 'notify_ceo'],
-    permissions: ['tasks.read', 'tasks.delegate', 'tasks.report', 'analytics.read', 'notifications.send'],
+    tools: ['delegate_task', 'submit_result', 'read_analytics', 'notify_ceo', 'message_ceo'],
+    permissions: ['tasks.read', 'tasks.delegate', 'tasks.report', 'analytics.read', 'notifications.send', 'messages.send'],
   },
   {
     key: 'market_research_worker',
@@ -202,8 +202,8 @@ ${SHARED_RULES}`,
     instructions: `Research industries, geographic markets, common website development needs and public market signals. Cite every claim with a source URL and access time.
 ${SHARED_RULES}`,
     reportingResponsibilities: 'Returns a sourced market research brief.',
-    tools: ['fetch_public_page', 'submit_result'],
-    permissions: ['tasks.read', 'tasks.report', 'research.read_public'],
+    tools: ['fetch_public_page', 'submit_result', 'message_ceo'],
+    permissions: ['tasks.read', 'tasks.report', 'research.read_public', 'messages.send'],
   },
   {
     key: 'competitor_analysis_worker',
@@ -216,8 +216,8 @@ ${SHARED_RULES}`,
     instructions: `Compare services, target customers, public pricing (only if published), positioning, portfolio and channels. Identify differentiation opportunities. Include sources and timestamps.
 ${SHARED_RULES}`,
     reportingResponsibilities: 'Returns a sourced competitor comparison.',
-    tools: ['fetch_public_page', 'submit_result'],
-    permissions: ['tasks.read', 'tasks.report', 'research.read_public'],
+    tools: ['fetch_public_page', 'submit_result', 'message_ceo'],
+    permissions: ['tasks.read', 'tasks.report', 'research.read_public', 'messages.send'],
   },
   {
     key: 'content_planning_worker',
@@ -230,8 +230,8 @@ ${SHARED_RULES}`,
     instructions: `Plan LinkedIn posts, case studies, landing pages, portfolio descriptions, educational content and email concepts around our services and target segments.
 ${SHARED_RULES}`,
     reportingResponsibilities: 'Returns a dated content calendar.',
-    tools: ['read_analytics', 'submit_result'],
-    permissions: ['tasks.read', 'tasks.report', 'analytics.read'],
+    tools: ['read_analytics', 'submit_result', 'message_ceo'],
+    permissions: ['tasks.read', 'tasks.report', 'analytics.read', 'messages.send'],
   },
   {
     key: 'content_writing_worker',
@@ -244,8 +244,8 @@ ${SHARED_RULES}`,
     instructions: `Write drafts in the configured brand voice about our real services and real work only. Drafts require CEO approval before anything is published.
 ${SHARED_RULES}`,
     reportingResponsibilities: 'Returns content drafts for review.',
-    tools: ['create_content_draft', 'request_publish_content', 'submit_result'],
-    permissions: ['tasks.read', 'tasks.report', 'content.draft', 'content.publish'],
+    tools: ['create_content_draft', 'request_publish_content', 'submit_result', 'message_ceo'],
+    permissions: ['tasks.read', 'tasks.report', 'content.draft', 'content.publish', 'messages.send'],
   },
   {
     key: 'campaign_planning_worker',
@@ -258,8 +258,8 @@ ${SHARED_RULES}`,
     instructions: `Propose objectives, target segments, messaging concepts, content schedule, budget recommendation and success metrics with defined denominators. Never launch or spend — request approval instead.
 ${SHARED_RULES}`,
     reportingResponsibilities: 'Returns editable campaign proposals.',
-    tools: ['create_campaign_proposal', 'request_launch_paid_campaign', 'submit_result'],
-    permissions: ['tasks.read', 'tasks.report', 'campaigns.plan', 'campaigns.launch_paid'],
+    tools: ['create_campaign_proposal', 'request_launch_paid_campaign', 'submit_result', 'message_ceo'],
+    permissions: ['tasks.read', 'tasks.report', 'campaigns.plan', 'campaigns.launch_paid', 'messages.send'],
   },
   {
     key: 'marketing_analytics_worker',
@@ -272,7 +272,7 @@ ${SHARED_RULES}`,
     instructions: `Report reach, engagement, visits, attributed leads, conversion rates (state the denominator) and costs where data exists. Label estimates clearly and never present them as measurements.
 ${SHARED_RULES}`,
     reportingResponsibilities: 'Returns measured metrics, trends and recommendations.',
-    tools: ['read_analytics', 'generate_report', 'submit_result'],
-    permissions: ['tasks.read', 'tasks.report', 'analytics.read', 'reports.generate'],
+    tools: ['read_analytics', 'generate_report', 'submit_result', 'message_ceo'],
+    permissions: ['tasks.read', 'tasks.report', 'analytics.read', 'reports.generate', 'messages.send'],
   },
 ];

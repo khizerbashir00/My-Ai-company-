@@ -52,6 +52,8 @@ export const toolRequestSchema = z.object({
   tool: z.string().min(1).max(80),
   title: z.string().max(200).nullable(),
   description: z.string().max(2000).nullable(),
+  /** Free-text body for notify_ceo / message_ceo (also accepts description as fallback). */
+  body: z.string().max(4000).nullish(),
   assigneeAgentKey: z.string().max(80).nullable(),
   stepKey: z.string().max(80).nullable(),
   priority: z.enum(['LOW', 'NORMAL', 'HIGH', 'URGENT']).nullable(),
@@ -77,6 +79,7 @@ export function toolRequestToArgs(req: ToolRequest): Record<string, unknown> {
   return {
     title: req.title,
     description: req.description,
+    body: req.body ?? req.description,
     assigneeAgentKey: req.assigneeAgentKey,
     stepKey: req.stepKey,
     priority: req.priority,

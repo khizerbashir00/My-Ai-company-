@@ -56,9 +56,43 @@ export class AppConfigService {
     return this.optional('OPENAI_API_KEY');
   }
 
+  /** OpenAI-compatible base URL (OpenRouter, Azure, etc.). Null = official OpenAI. */
+  get openaiBaseUrl(): string | null {
+    return this.optional('OPENAI_BASE_URL');
+  }
+
   /** Redis connection string for BullMQ. Null when background jobs are unavailable. */
   get redisUrl(): string | null {
     return this.optional('REDIS_URL');
+  }
+
+  get logFormat(): 'text' | 'json' {
+    return this.config.get('LOG_FORMAT', { infer: true });
+  }
+
+  get taskDefaultMaxAttempts(): number {
+    return this.config.get('TASK_DEFAULT_MAX_ATTEMPTS', { infer: true });
+  }
+
+  get scanJobAttempts(): number {
+    return this.config.get('SCAN_JOB_ATTEMPTS', { infer: true });
+  }
+
+  /** Estimated USD/day budget for alerts; null when unset. Not actual billing. */
+  get aiDailyEstimatedUsdBudget(): number | null {
+    return this.config.get('AI_DAILY_ESTIMATED_USD_BUDGET', { infer: true }) ?? null;
+  }
+
+  get throttleTtlMs(): number {
+    return this.config.get('THROTTLE_TTL_MS', { infer: true });
+  }
+
+  get throttleLimit(): number {
+    return this.config.get('THROTTLE_LIMIT', { infer: true });
+  }
+
+  get shutdownTimeoutMs(): number {
+    return this.config.get('SHUTDOWN_TIMEOUT_MS', { infer: true });
   }
 
   /** Non-secret email provider status for Settings / Approvals UI. */
@@ -110,6 +144,7 @@ export class AppConfigService {
   private optional(
     key:
       | 'OPENAI_API_KEY'
+      | 'OPENAI_BASE_URL'
       | 'OPENAI_MODEL'
       | 'OPENAI_MODEL_ADVANCED'
       | 'REDIS_URL'

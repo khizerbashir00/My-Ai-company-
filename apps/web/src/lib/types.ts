@@ -141,10 +141,12 @@ export interface Metrics {
     leadsQualified: number;
     leadsHighIntent: number;
     outreachDrafts: number;
+    draftsAwaitingApproval: number;
     messagesSent: number;
     repliesReceived: number;
     interestedProspects: number;
     demoRequests: number;
+    negotiations: number;
     meetingsScheduled: number;
     dealsWon: number;
     dealsLost: number;
@@ -156,7 +158,7 @@ export interface Metrics {
     assetsPublished: number;
     attributedLeads: number;
     metricImports: number;
-    performance: { measured: boolean; note: string };
+    performance: { measured: boolean; note: string; unavailable?: string[] };
   };
   tasks: {
     total: number;
@@ -175,6 +177,27 @@ export interface Metrics {
       department: Ref | null;
     }[];
   };
+  aiUsage: {
+    measured: boolean;
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+    calls: number;
+    byModel: {
+      provider: string;
+      model: string;
+      calls: number;
+      inputTokens: number;
+      outputTokens: number;
+      totalTokens: number;
+      estimatedUsd: number | null;
+      costKind: 'ESTIMATE' | 'UNAVAILABLE';
+      rateSource: string | null;
+    }[];
+    estimatedUsdTotal: number | null;
+    costKind: 'ESTIMATE' | 'UNAVAILABLE';
+    note: string;
+  };
   definitions: Record<string, string>;
 }
 
@@ -188,6 +211,18 @@ export interface SystemStatus {
     inboundWebhookConfigured: boolean;
   };
   redisConfigured: boolean;
+  limits?: {
+    taskDefaultMaxAttempts: number;
+    scanJobAttempts: number;
+    throttleLimit: number;
+    aiDailyEstimatedUsdBudget: number | null;
+  };
+  monitoring?: {
+    tasksFailed: number;
+    tasksAwaitingApproval: number;
+    pendingApprovals: number;
+    unreadCeoNotifications: number;
+  };
   sources: {
     id: string;
     key: string;

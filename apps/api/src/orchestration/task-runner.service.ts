@@ -20,6 +20,7 @@ import { agentTurnSchema, toolRequestToArgs, type AgentTurn, type ToolRequest, t
 import { TasksService, type TaskActor } from '../tasks/tasks.service';
 import { RunsService } from './runs.service';
 import { GmPlannerService } from './gm-planner.service';
+import { MessagesService } from '../messages/messages.service';
 import { ToolExecutorService, type ToolExecutionContext } from './tool-executor.service';
 import type { AuthUser, RequestContext } from '../common/auth.decorators';
 import type { TaskDetail } from '../tasks/tasks.service';
@@ -53,6 +54,7 @@ export class TaskRunnerService {
     private readonly runs: RunsService,
     private readonly tools: ToolExecutorService,
     private readonly planner: GmPlannerService,
+    private readonly messages: MessagesService,
   ) {}
 
   async runTask(taskId: string, user: AuthUser, ctx: RequestContext, opts: RunTaskOptions = {}): Promise<RunTaskResult> {
@@ -417,6 +419,19 @@ export class TaskRunnerService {
         },
         actor,
       );
+
+      // Report back in Messages so the CEO sees a teammate update after work.
+      const summary =
+        turn.result?.summary?.trim() ||
+        (childrenCreated.length ? `Created ${childrenCreated.length} subtask(s) for "${task.title}".` : `Finished "${task.title}".`);
+      await this.messages
+        .postFromAgent({
+          agentId: task.assignedAgentId!,
+          body: summary.slice(0, 4000),
+          taskId: task.id,
+          notify: true,
+        })
+        .catch((err) => this.logger.warn(`Team message after task ${task.id} failed: ${err instanceof Error ? err.message : err}`));
 
       return {
         runId: run.id,

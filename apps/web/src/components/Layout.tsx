@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
-import { CheckSquare, LayoutDashboard, Link2, LogOut, Megaphone, Menu, Network, Settings, ShieldCheck, Users, X } from 'lucide-react';
-import { useState } from 'react';
+import { Bell, CheckSquare, FileText, LayoutDashboard, Link2, LogOut, Megaphone, Menu, MessageSquare, Network, Settings, ShieldCheck, Users, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
@@ -14,6 +14,9 @@ const NAV = [
   { to: '/sources', label: 'Sources', icon: Link2 },
   { to: '/marketing', label: 'Marketing', icon: Megaphone },
   { to: '/approvals', label: 'Approvals', icon: ShieldCheck },
+  { to: '/notifications', label: 'Notifications', icon: Bell },
+  { to: '/messages', label: 'Messages', icon: MessageSquare },
+  { to: '/reports', label: 'Reports', icon: FileText },
   { to: '/tasks', label: 'Tasks', icon: CheckSquare },
   { to: '/organization', label: 'Organization', icon: Network },
   { to: '/settings', label: 'Settings', icon: Settings },
@@ -27,17 +30,21 @@ export function Layout() {
   const live = useLiveUpdates(Boolean(user));
   const [open, setOpen] = useState(false);
   const location = useLocation();
-  const [lastPath, setLastPath] = useState(location.pathname);
-  if (lastPath !== location.pathname) {
-    setLastPath(location.pathname);
+  useEffect(() => {
     setOpen(false);
-  }
+  }, [location.pathname]);
 
   // Small badge on Tasks: work that is waiting on the CEO or has failed.
   const metrics = useQuery({ queryKey: ['metrics', 'nav'], queryFn: () => api.get<Metrics>('/dashboard/metrics'), staleTime: 30_000 });
+  const unread = useQuery({
+    queryKey: ['notifications-unread'],
+    queryFn: () => api.get<{ unread: number }>('/notifications/unread-count'),
+    staleTime: 15_000,
+  });
   const attention = metrics.data
     ? (metrics.data.tasks.byStatus.find((s) => s.status === 'AWAITING_APPROVAL')?.count ?? 0) + metrics.data.tasks.failed
     : 0;
+  const unreadCount = unread.data?.unread ?? 0;
 
   const sidebar = (
     <div className="flex h-full flex-col">
@@ -66,6 +73,11 @@ export function Layout() {
             {label === 'Tasks' && attention > 0 && (
               <span className="num rounded-full bg-st-waiting-wash px-1.5 text-[12px] font-semibold text-st-waiting" title="Awaiting approval or failed">
                 {attention}
+              </span>
+            )}
+            {label === 'Notifications' && unreadCount > 0 && (
+              <span className="num rounded-full bg-brand-wash px-1.5 text-[12px] font-semibold text-brand-ink" title="Unread">
+                {unreadCount}
               </span>
             )}
           </NavLink>

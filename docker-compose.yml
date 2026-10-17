@@ -1,6 +1,6 @@
 # Local development services: PostgreSQL (app + test databases) and Redis.
 # The API and web app run on your machine with `npm run dev:api` / `npm run dev:web`.
-# Production deployment (containerized API/web behind a reverse proxy) is Phase 6.
+# Production: see docker-compose.prod.yml and docs/deploy/production.md.
 #
 #   docker compose up -d
 #

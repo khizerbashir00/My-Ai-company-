@@ -311,6 +311,9 @@ model User {
   leadScores         LeadScore[]
   projectsConfirmed  Project[]      @relation("ProjectConfirmedBy")
   contentVersions    ContentVersion[] @relation("ContentVersionAuthor")
+  ceoReports         CeoReport[]
+  teamThreads        TeamThread[]   @relation("TeamThreadCreatedBy")
+  teamMessages       TeamMessage[]  @relation("TeamMessageAuthor")
 
   @@map("users")
 }
@@ -365,6 +368,8 @@ model AgentDefinition {
   auditLogs   AuditLog[]
   assignedLeads Lead[]
   marketingReports MarketingReport[]
+  teamThreads   TeamThread[]
+  teamMessages  TeamMessage[]
 
   @@index([departmentId])
   @@index([parentId])
@@ -640,6 +645,9 @@ model Lead {
   @@index([createdAt])
   @@index([contactEmail])
   @@index([assignedAgentId])
+  @@index([demoScheduledAt])
+  @@index([lostAt])
+  @@index([attributedCampaignId])
   @@map("leads")
 }
 
@@ -722,6 +730,7 @@ model OutreachMessage {
   @@index([leadId])
   @@index([status])
   @@index([status, scheduledFor])
+  @@index([sentAt])
   @@index([providerMessageId])
   @@map("outreach_messages")
 }
@@ -1043,6 +1052,25 @@ model MarketingReport {
   @@map("marketing_reports")
 }
 
+/// Company-wide CEO daily/weekly report from counted HQ metrics (not invented).
+model CeoReport {
+  id                String                @id @default(uuid()) @db.Uuid
+  period            MarketingReportPeriod
+  periodStart       DateTime              @map("period_start")
+  periodEnd         DateTime              @map("period_end")
+  title             String
+  body              String                @default("")
+  metricsSnapshot   Json                  @map("metrics_snapshot")
+  generatedByUserId String?               @map("generated_by_user_id") @db.Uuid
+  generatedAt       DateTime              @default(now()) @map("generated_at")
+
+  generatedByUser User? @relation(fields: [generatedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([period, periodStart])
+  @@index([generatedAt])
+  @@map("ceo_reports")
+}
+
 // ─────────────────────────────── Governance ───────────────────────────────
 
 model Approval {
@@ -1090,6 +1118,49 @@ model Notification {
   @@unique([userId, dedupeKey])
   @@index([userId, readAt])
   @@map("notifications")
+}
+
+enum TeamMessageAuthor {
+  USER
+  AGENT
+}
+
+/// One conversation between the CEO and a single AI teammate.
+model TeamThread {
+  id              String   @id @default(uuid()) @db.Uuid
+  agentId         String   @map("agent_id") @db.Uuid
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  subject         String   @default("")
+  lastMessageAt   DateTime @default(now()) @map("last_message_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  agent     AgentDefinition @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  createdBy User            @relation("TeamThreadCreatedBy", fields: [createdByUserId], references: [id], onDelete: Cascade)
+  messages  TeamMessage[]
+
+  @@unique([agentId, createdByUserId])
+  @@index([lastMessageAt])
+  @@map("team_threads")
+}
+
+model TeamMessage {
+  id         String            @id @default(uuid()) @db.Uuid
+  threadId   String            @map("thread_id") @db.Uuid
+  authorKind TeamMessageAuthor @map("author_kind")
+  userId     String?           @map("user_id") @db.Uuid
+  agentId    String?           @map("agent_id") @db.Uuid
+  body       String
+  /// Optional link to the task that prompted this update (work report-back).
+  taskId     String?           @map("task_id") @db.Uuid
+  createdAt  DateTime          @default(now()) @map("created_at")
+
+  thread TeamThread      @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  user   User?           @relation("TeamMessageAuthor", fields: [userId], references: [id], onDelete: SetNull)
+  agent  AgentDefinition? @relation(fields: [agentId], references: [id], onDelete: SetNull)
+
+  @@index([threadId, createdAt])
+  @@map("team_messages")
 }
 
 /// Development project created when the CEO confirms a deal. Development itself is done by the CEO.

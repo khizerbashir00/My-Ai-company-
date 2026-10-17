@@ -13,8 +13,11 @@ import { LeadDetailPage } from './pages/LeadDetail';
 import { LeadsPage } from './pages/Leads';
 import { LoginPage } from './pages/Login';
 import { MarketingPage } from './pages/Marketing';
+import { MessagesPage } from './pages/Messages';
+import { NotificationsPage } from './pages/Notifications';
 import { OrganizationPage } from './pages/Organization';
 import { OverviewPage } from './pages/Overview';
+import { ReportsPage } from './pages/Reports';
 import { SettingsPage } from './pages/Settings';
 import { SourcesPage } from './pages/Sources';
 import { TaskDetailPage } from './pages/TaskDetail';
@@ -72,6 +75,11 @@ createRoot(document.getElementById('root')!).render(
               <Route path="approvals/:id" element={<ApprovalsPage />} />
               <Route path="marketing" element={<MarketingPage />} />
               <Route path="marketing/:section/:id" element={<MarketingPage />} />
+              <Route path="notifications" element={<NotificationsPage />} />
+              <Route path="messages" element={<MessagesPage />} />
+              <Route path="messages/:threadId" element={<MessagesPage />} />
+              <Route path="reports" element={<ReportsPage />} />
+              <Route path="reports/:id" element={<ReportsPage />} />
               <Route path="tasks" element={<TasksPage />} />
               <Route path="tasks/:id" element={<TaskDetailPage />} />
               <Route path="organization" element={<OrganizationPage />} />

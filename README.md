@@ -2,7 +2,7 @@
 
 A control platform where you are the CEO and AI managers run Sales and Marketing for your web development business. You assign goals, AI managers delegate to AI workers, and you review, approve and close deals. Software development after a deal is confirmed stays with you.
 
-**Status: Phase 3 of 6 complete** (platform + AI execution + Sales CRM). See [`docs/milestones/phase-3.md`](docs/milestones/phase-3.md), earlier milestone reports, and [`docs/architecture.md`](docs/architecture.md).
+**Status:** Feature phases through dashboard/notifications are implemented. **Production deployment** instructions: [`docs/deploy/production.md`](docs/deploy/production.md). Architecture: [`docs/architecture.md`](docs/architecture.md).
 
 ## What works today
 
@@ -57,7 +57,7 @@ npm run dev:api     # http://localhost:3000/api
 npm run dev:web     # http://localhost:5173  ← open this
 ```
 
-The web app calls `/api` on its own origin; Vite proxies it to the API in development. In production, put both behind one reverse proxy (Phase 6 covers this).
+The web app calls `/api` on its own origin; Vite proxies it to the API in development. In production, use `docker-compose.prod.yml` + Caddy (see [`docs/deploy/production.md`](docs/deploy/production.md)).
 
 ### If Prisma can't download its engine
 

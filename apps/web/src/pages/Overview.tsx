@@ -18,6 +18,7 @@ const RANGES: { key: RangeKey; label: string; days?: number }[] = [
 export function OverviewPage() {
   const [range, setRange] = useState<RangeKey>('30d');
   const [sourceId, setSourceId] = useState('');
+  const [departmentId, setDepartmentId] = useState('');
   const from = useMemo(() => {
     const days = RANGES.find((r) => r.key === range)?.days;
     if (!days) return undefined;
@@ -26,12 +27,17 @@ export function OverviewPage() {
     d.setDate(d.getDate() - days + 1);
     return d.toISOString();
   }, [range]);
+  const to = useMemo(() => (range === 'all' ? undefined : new Date().toISOString()), [range]);
 
   const metrics = useQuery({
-    queryKey: ['metrics', range, sourceId],
-    queryFn: () => api.get<Metrics>(`/dashboard/metrics${qs({ from, sourceId })}`),
+    queryKey: ['metrics', range, sourceId, departmentId],
+    queryFn: () => api.get<Metrics>(`/dashboard/metrics${qs({ from, to, sourceId, departmentId })}`),
   });
   const status = useQuery({ queryKey: ['system-status'], queryFn: () => api.get<SystemStatus>('/system/status') });
+  const depts = useQuery({
+    queryKey: ['departments'],
+    queryFn: () => api.get<Array<{ id: string; name: string }>>('/departments'),
+  });
 
   return (
     <>
@@ -43,12 +49,25 @@ export function OverviewPage() {
             <label className="sr-only" htmlFor="src">
               Lead source
             </label>
-            <div className="w-48">
+            <div className="w-44">
               <Select id="src" value={sourceId} onChange={(e) => setSourceId(e.target.value)}>
                 <option value="">All lead sources</option>
                 {status.data?.sources.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <label className="sr-only" htmlFor="dept">
+              Department
+            </label>
+            <div className="w-40">
+              <Select id="dept" value={departmentId} onChange={(e) => setDepartmentId(e.target.value)}>
+                <option value="">All departments</option>
+                {(depts.data ?? []).map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
                   </option>
                 ))}
               </Select>
@@ -106,10 +125,12 @@ function Dashboard({ m, aiReady }: { m: Metrics; aiReady: boolean }) {
             <Line label="Qualified" value={m.sales.leadsQualified} hint={d.leadsQualified} />
             <Line label="High intent" value={m.sales.leadsHighIntent} hint={d.leadsHighIntent} />
             <Line label="Outreach drafts" value={m.sales.outreachDrafts} hint={d.outreachDrafts} />
+            <Line label="Drafts awaiting approval" value={m.sales.draftsAwaitingApproval} hint={d.draftsAwaitingApproval} />
             <Line label="Messages sent" value={m.sales.messagesSent} hint={d.messagesSent} />
             <Line label="Replies received" value={m.sales.repliesReceived} hint={d.repliesReceived} />
             <Line label="Interested prospects" value={m.sales.interestedProspects} hint={d.interestedProspects} />
             <Line label="Demo requests" value={m.sales.demoRequests} hint={d.demoRequests} />
+            <Line label="Negotiations" value={m.sales.negotiations} hint={d.negotiations} />
             <Line label="Meetings scheduled" value={m.sales.meetingsScheduled} hint={d.meetingsScheduled} />
             <Line label="Deals won" value={m.sales.dealsWon} hint={d.dealsWon} />
             <Line label="Deals lost" value={m.sales.dealsLost} hint={d.dealsLost} />
@@ -135,18 +156,72 @@ function Dashboard({ m, aiReady }: { m: Metrics; aiReady: boolean }) {
             <dl className="divide-y divide-rule">
               <Line label="Content published" value={m.marketing.assetsPublished} />
               <Line label="Campaigns" value={m.marketing.campaignsByStatus.reduce((n, c) => n + c.count, 0)} />
+              {m.marketing.campaignsByStatus
+                .filter((c) => c.count > 0)
+                .map((c) => (
+                  <Line key={c.status} label={`Campaign · ${c.status.replace(/_/g, ' ').toLowerCase()}`} value={c.count} />
+                ))}
               <Line label="Attributed leads" value={m.marketing.attributedLeads} />
               <Line label="Metric imports" value={m.marketing.metricImports} />
             </dl>
-            {!m.marketing.performance.measured && (
-              <p className="border-t border-rule px-4 py-3 text-sm text-ink-3">
-                Reach, engagement and conversion appear here once an analytics source is connected or a report is imported. Nothing is estimated until then.
+            <p className="border-t border-rule px-4 py-3 text-sm text-ink-3">{m.marketing.performance.note}</p>
+            {(m.marketing.performance.unavailable?.length ?? 0) > 0 && (
+              <p className="border-t border-rule px-4 py-2 text-[13px] text-ink-3">
+                Unavailable until configured: {m.marketing.performance.unavailable!.join(', ')}
               </p>
             )}
           </Section>
+          <AiUsage m={m} />
         </div>
       </div>
     </div>
+  );
+}
+
+function AiUsage({ m }: { m: Metrics }) {
+  const u = m.aiUsage;
+  return (
+    <Section title="AI usage" aside={<Link to="/reports" className="text-sm font-medium text-brand hover:underline">CEO reports</Link>}>
+      {!u.measured ? (
+        <p className="px-4 py-3 text-sm text-ink-3">{u.note}</p>
+      ) : (
+        <>
+          <dl className="divide-y divide-rule">
+            <Line label="API calls recorded" value={u.calls} />
+            <Line label="Input tokens" value={u.inputTokens} hint={m.definitions.aiUsageTokens} />
+            <Line label="Output tokens" value={u.outputTokens} />
+            <Line label="Total tokens" value={u.totalTokens} />
+            <div className="flex items-baseline justify-between gap-4 px-4 py-2.5">
+              <dt className="min-w-0">
+                <span className="text-ink">Estimated cost (USD)</span>
+                <span className="block text-[13px] leading-snug text-ink-3">{m.definitions.aiUsageEstimatedCost}</span>
+              </dt>
+              <dd className="num shrink-0 text-lg font-semibold">
+                {u.estimatedUsdTotal == null ? <span className="text-ink-3">Unavailable</span> : `~$${u.estimatedUsdTotal.toFixed(4)}`}
+              </dd>
+            </div>
+          </dl>
+          <p className="border-t border-rule px-4 py-3 text-[13px] text-ink-3">
+            {u.note} Kind: <span className="font-medium">{u.costKind}</span>.
+          </p>
+          {u.byModel.length > 0 && (
+            <ul className="divide-y divide-rule border-t border-rule text-sm">
+              {u.byModel.map((row) => (
+                <li key={`${row.provider}:${row.model}`} className="flex justify-between gap-3 px-4 py-2 text-ink-2">
+                  <span className="truncate">
+                    {row.model} <span className="text-ink-3">({row.calls} calls)</span>
+                  </span>
+                  <span className="num shrink-0">
+                    {formatInt(row.totalTokens)} tok
+                    {row.estimatedUsd != null ? ` · ~$${row.estimatedUsd.toFixed(4)}` : ' · $ n/a'}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+    </Section>
   );
 }
 

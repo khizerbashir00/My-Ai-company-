@@ -4,6 +4,7 @@ import type { ActorType, AgentKind, TaskKind, TaskStatus } from '../generated/pr
 import { AuditService } from '../audit/audit.service';
 import type { AuthUser, RequestContext } from '../common/auth.decorators';
 import { Page, toPage } from '../common/pagination';
+import { AppConfigService } from '../config/app-config.service';
 import { EventsService } from '../events/events.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -58,6 +59,7 @@ export class TasksService {
     private readonly audit: AuditService,
     private readonly events: EventsService,
     private readonly notifications: NotificationsService,
+    private readonly config: AppConfigService,
   ) {}
 
   async list(q: ListTasksQueryDto): Promise<Page<TaskListItem>> {
@@ -141,7 +143,7 @@ export class TasksService {
             parentTaskId: dto.parentTaskId ?? null,
             createdById,
             dueAt: dto.dueAt ? new Date(dto.dueAt) : null,
-            maxAttempts: dto.maxAttempts ?? 3,
+            maxAttempts: dto.maxAttempts ?? this.config.taskDefaultMaxAttempts,
             idempotencyKey: dto.idempotencyKey ?? null,
             input: (dto.input as Prisma.InputJsonValue | undefined) ?? Prisma.JsonNull,
             dependencies: { create: dependsOn.map((d) => ({ dependsOnId: d })) },

@@ -85,7 +85,7 @@ export class ScanQueueService implements OnModuleInit, OnModuleDestroy {
         { scanRunId },
         {
           jobId: scanRunId,
-          attempts: 2,
+          attempts: this.config.scanJobAttempts,
           backoff: { type: 'exponential', delay: 5_000 },
           removeOnComplete: 100,
           removeOnFail: 50,

@@ -7,6 +7,7 @@ import { AuditModule } from './audit/audit.module';
 import { AuthGuard } from './auth/auth.guard';
 import { AuthModule } from './auth/auth.module';
 import { AppConfigModule } from './config/config.module';
+import { AppConfigService } from './config/app-config.service';
 import { ConnectorsModule } from './connectors/connectors.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { DepartmentsModule } from './departments/departments.module';
@@ -14,6 +15,7 @@ import { EmailModule } from './email/email.module';
 import { EventsModule } from './events/events.module';
 import { LeadsModule } from './leads/leads.module';
 import { MarketingModule } from './marketing/marketing.module';
+import { MessagesModule } from './messages/messages.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { OrchestrationModule } from './orchestration/orchestration.module';
 import { OutreachModule } from './outreach/outreach.module';
@@ -25,8 +27,12 @@ import { TasksModule } from './tasks/tasks.module';
 @Module({
   imports: [
     AppConfigModule,
-    // Default: 120 requests/minute per client. Login and password changes are stricter (see AuthController).
-    ThrottlerModule.forRoot({ throttlers: [{ name: 'default', ttl: 60_000, limit: 120 }] }),
+    ThrottlerModule.forRootAsync({
+      inject: [AppConfigService],
+      useFactory: (config: AppConfigService) => ({
+        throttlers: [{ name: 'default', ttl: config.throttleTtlMs, limit: config.throttleLimit }],
+      }),
+    }),
     PrismaModule,
     AuditModule,
     EventsModule,
@@ -34,6 +40,7 @@ import { TasksModule } from './tasks/tasks.module';
     AiModule,
     EmailModule,
     NotificationsModule,
+    MessagesModule,
     ConnectorsModule,
     DepartmentsModule,
     AgentsModule,

@@ -6,6 +6,7 @@ import type { WorkerResult } from '../ai/schemas';
 import { isToolName, PERMISSIONS, TOOLS, type ToolName } from '../agents/registry';
 import { PrismaService } from '../prisma/prisma.service';
 import { MarketingService } from '../marketing/marketing.service';
+import { MessagesService } from '../messages/messages.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { OutreachService } from '../outreach/outreach.service';
 import { SourcesService } from '../sources/sources.service';
@@ -47,6 +48,7 @@ export class ToolExecutorService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly tasks: TasksService,
+    private readonly messages: MessagesService,
     private readonly sources: SourcesService,
     private readonly outreach: OutreachService,
     private readonly notifications: NotificationsService,
@@ -170,6 +172,9 @@ export class ToolExecutorService {
     }
     if (toolName === 'notify_ceo') {
       return this.notifyCeoTool(args);
+    }
+    if (toolName === 'message_ceo') {
+      return this.messageCeoTool(args, ctx);
     }
     if (toolName === 'create_campaign_proposal') {
       const campaign = await this.marketing.createCampaignFromTool(args);
@@ -339,6 +344,20 @@ export class ToolExecutorService {
       dedupeKey,
     });
     return { result: { created } };
+  }
+
+  private async messageCeoTool(
+    args: Record<string, unknown>,
+    ctx: ToolExecutionContext,
+  ): Promise<Partial<ToolExecutionResult>> {
+    const body = stringArg(args, 'body');
+    const posted = await this.messages.postFromAgent({
+      agentId: ctx.agentId,
+      body,
+      taskId: ctx.taskId,
+      notify: true,
+    });
+    return { result: posted };
   }
 
   private async delegateTask(args: Record<string, unknown>, ctx: ToolExecutionContext): Promise<Partial<ToolExecutionResult>> {

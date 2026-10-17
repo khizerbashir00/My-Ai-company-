@@ -1,0 +1,20 @@
+# Reverse proxy for a Linux VPS.
+# Set HQ_DOMAIN in the environment (e.g. hq.example.com).
+# Caddy obtains HTTPS certificates automatically when DNS points here.
+#
+# Local smoke (HTTP only): use docker-compose.prod.yml without this file,
+# or set HQ_DOMAIN to :80 with a custom Caddyfile — see docs/deploy/production.md.
+
+{$HQ_DOMAIN} {
+	encode gzip
+
+	# Web SPA + /api proxied by the web container's nginx to the API.
+	reverse_proxy web:80
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+}

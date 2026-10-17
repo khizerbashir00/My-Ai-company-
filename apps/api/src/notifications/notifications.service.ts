@@ -62,9 +62,14 @@ export class NotificationsService {
     return created;
   }
 
+  async unreadCount(userId: string) {
+    const unread = await this.prisma.notification.count({ where: { userId, readAt: null } });
+    return { unread };
+  }
+
   async listForUser(userId: string, opts?: { unreadOnly?: boolean; page?: number; pageSize?: number }) {
-    const page = opts?.page ?? 1;
-    const pageSize = opts?.pageSize ?? 30;
+    const page = Math.max(1, opts?.page ?? 1);
+    const pageSize = Math.min(100, Math.max(1, opts?.pageSize ?? 30));
     const where = { userId, ...(opts?.unreadOnly ? { readAt: null } : {}) };
     const [total, items] = await this.prisma.$transaction([
       this.prisma.notification.count({ where }),

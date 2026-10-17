@@ -6,11 +6,15 @@ async function main(): Promise<void> {
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error('DATABASE_URL is not set');
 
+  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_PROD_SEED !== '1') {
+    throw new Error('Refusing to seed in production without ALLOW_PROD_SEED=1 (bootstrap only).');
+  }
+
   const email = process.env.CEO_EMAIL?.trim();
   const password = process.env.CEO_PASSWORD ?? '';
   const name = process.env.CEO_NAME?.trim() || 'CEO';
   if (!email) throw new Error('CEO_EMAIL is not set');
-  if (password.length < 12) throw new Error('CEO_PASSWORD must be at least 12 characters');
+  if (password.length < 8) throw new Error('CEO_PASSWORD must be at least 8 characters');
 
   const prisma = createPrismaClient(url);
   try {
