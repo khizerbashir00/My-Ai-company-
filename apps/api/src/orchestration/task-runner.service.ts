@@ -242,6 +242,23 @@ export class TaskRunnerService {
         .map((c) => `- ${c.key} (${c.kind}): ${c.name} — ${c.role}`)
         .join('\n');
 
+      const liveSources = await this.prisma.source.findMany({
+        where: { isEnabled: true },
+        select: {
+          key: true,
+          name: true,
+          connections: { select: { id: true, label: true, status: true }, take: 5 },
+        },
+        orderBy: { key: 'asc' },
+      });
+      const sourceLines = liveSources
+        .map((s) => {
+          const labels = s.connections.map((c) => `${c.label}:${c.status}`).join(', ');
+          return `- ${s.key} (${s.name})${labels ? ` — connections: ${labels}` : ''}`;
+        })
+        .join('\n');
+      const hasLeadSearch = agent.tools.includes('search_lead_sources') && liveSources.some((s) => s.key === 'hacker_news');
+
       const completion = await this.ai.completeStructured({
         tier: agent.modelTier,
         modelOverride: agent.modelOverride,
@@ -264,8 +281,12 @@ export class TaskRunnerService {
               '- Prefer toolRequests for implemented tools only. request_send_outreach creates an approval — it does not send by itself.',
               '- For blocked capabilities, set result.outcome to "blocked" with clear blockedReasons.',
               '- findings[].invented must always be false.',
+              '- Do NOT claim "no authorized connector" if Enabled lead sources are listed below — use search_lead_sources / read_leads / save_lead instead.',
               subordinates ? `Direct reports you may delegate to:\n${subordinates}` : 'You have no direct reports.',
               `Configured tools: ${agent.tools.join(', ') || '(none)'}`,
+              sourceLines
+                ? `Enabled lead sources (authorized for tools):\n${sourceLines}`
+                : 'Enabled lead sources: none (CEO may still manual-import).',
             ].join('\n'),
           },
           {
@@ -277,7 +298,15 @@ export class TaskRunnerService {
               `Task input JSON: ${JSON.stringify(task.input ?? {})}`,
               '',
               agent.kind === 'WORKER'
-                ? 'Produce a worker result. If an authorized connector is not configured for this task, outcome must be "blocked" — do not fabricate findings. Manual import remains available to the CEO.'
+                ? [
+                    'Produce a worker result using your configured tools listed above.',
+                    'IMPORTANT: You DO have tools — do not claim "lack of tools" or "no connector" when read_leads / save_lead / save_lead_score / search_lead_sources / fetch_public_page appear in Configured tools.',
+                    'Call toolRequests first (e.g. read_leads to load existing leads, then save_lead_score or fetch_public_page as needed), then submit_result.',
+                    hasLeadSearch
+                      ? 'Hacker News search is available via search_lead_sources when you need new leads.'
+                      : 'If this task needs new discovery and search_lead_sources is not in your tools, you may still read_leads for existing CRM records.',
+                    'Only use outcome "blocked" after a tool fails or returns nothing usable. Never fabricate findings.',
+                  ].join(' ')
                 : 'Produce a plan with steps assigned to your direct reports, request delegate_task for each step, then submit_result summarizing the plan. List unavailable capabilities in blockedCapabilities.',
             ].join('\n'),
           },

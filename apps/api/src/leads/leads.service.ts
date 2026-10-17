@@ -468,14 +468,15 @@ export class LeadsService {
     return this.get(id);
   }
 
-  async previewImport(csvText: string) {
+  async previewImport(csvText: string, sourceKey?: string) {
     const { headers, rows } = parseCsv(csvText);
     if (!headers.length) throw new BadRequestException('CSV is empty.');
     if (!headers.includes('name') || !headers.includes('source_url')) {
       throw new BadRequestException('CSV must include at least name and source_url columns.');
     }
     const unknown = headers.filter((h) => h && !(CSV_LEAD_COLUMNS as readonly string[]).includes(h));
-    const source = await this.manualSource();
+    const source = await this.resolveImportSource(sourceKey);
+    const isManualImport = source.accessMethod === 'MANUAL_IMPORT';
 
     const preview = [];
     const seenCanonical = new Set<string>();
@@ -541,14 +542,14 @@ export class LeadsService {
         raw: map,
         errors,
         duplicate,
-        isManualImport: true,
+        isManualImport,
       });
     }
 
     return {
       headers,
       unknownColumns: unknown,
-      isManualImport: true,
+      isManualImport,
       source: { id: source.id, key: source.key, name: source.name, accessMethod: source.accessMethod },
       rows: preview,
       validCount: preview.filter((r) => r.errors.length === 0).length,
@@ -863,6 +864,20 @@ export class LeadsService {
   private async manualSource() {
     const source = await this.prisma.source.findUnique({ where: { key: MANUAL_KEY } });
     if (!source) throw new BadRequestException('Manual import source is not seeded.');
+    return source;
+  }
+
+  /** Resolve CSV import attribution. Only MANUAL_IMPORT sources (or default manual) are allowed. */
+  private async resolveImportSource(sourceKey?: string) {
+    const key = sourceKey?.trim() || MANUAL_KEY;
+    const source = await this.prisma.source.findUnique({ where: { key } });
+    if (!source) throw new BadRequestException(`Unknown import source "${key}".`);
+    if (source.accessMethod !== 'MANUAL_IMPORT') {
+      throw new BadRequestException(
+        `Source "${source.name}" is a live connector — use Scan on Sources, or import under an Import-only source.`,
+      );
+    }
+    if (!source.isEnabled) throw new BadRequestException(`Source "${source.name}" is disabled.`);
     return source;
   }
 

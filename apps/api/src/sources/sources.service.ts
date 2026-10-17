@@ -2,9 +2,10 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { Prisma } from '../generated/prisma/client';
 import type { ConnectionStatus } from '../generated/prisma/client';
 import { AuthUser, RequestContext } from '../common/auth.decorators';
-import { MANUAL_IMPORT_SOURCE_KEY } from '../database/seed';
+import { IMPORT_ONLY_SOURCES, MANUAL_IMPORT_SOURCE_KEY } from '../database/seed';
 import { ConnectorRegistry } from '../connectors/connector.registry';
 import { defaultHnConfig, HN_SOURCE_KEY } from '../connectors/hacker-news/hn.connector';
+import { defaultRedditConfig, REDDIT_SOURCE_KEY } from '../connectors/reddit/reddit.connector';
 import { LeadsService } from '../leads/leads.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ScanQueueService } from './scan-queue.service';
@@ -297,44 +298,73 @@ export class SourcesService {
     );
   }
 
-  /** Ensure HN source + default connection exist (idempotent). Called from seed and boot. */
+  /** Ensure implemented connectors + import-only sources exist (idempotent). Called from seed and boot. */
   async ensureDefaultConnections(): Promise<void> {
-    const hn = this.connectors.get(HN_SOURCE_KEY);
-    if (!hn) return;
+    for (const connector of this.connectors.list().map((d) => this.connectors.get(d.key)!)) {
+      const key = connector.descriptor.key;
+      const defaultConfig =
+        key === HN_SOURCE_KEY
+          ? { ...defaultHnConfig(), maxResults: connector.descriptor.defaultMaxResults }
+          : key === REDDIT_SOURCE_KEY
+            ? defaultRedditConfig()
+            : { maxResults: connector.descriptor.defaultMaxResults };
 
-    const source = await this.prisma.source.upsert({
-      where: { key: HN_SOURCE_KEY },
-      create: {
-        key: HN_SOURCE_KEY,
-        name: hn.descriptor.name,
-        platform: hn.descriptor.platform,
-        accessMethod: hn.descriptor.accessMethod,
-        description: hn.descriptor.description,
-        complianceNotes: hn.descriptor.complianceNotes,
-        capabilities: hn.descriptor.capabilities,
-        scanIntervalMinutes: hn.descriptor.defaultScanIntervalMinutes,
-        isEnabled: true,
-      },
-      update: {
-        description: hn.descriptor.description,
-        complianceNotes: hn.descriptor.complianceNotes,
-        capabilities: hn.descriptor.capabilities,
-      },
-    });
+      const source = await this.prisma.source.upsert({
+        where: { key },
+        create: {
+          key,
+          name: connector.descriptor.name,
+          platform: connector.descriptor.platform,
+          accessMethod: connector.descriptor.accessMethod,
+          description: connector.descriptor.description,
+          complianceNotes: connector.descriptor.complianceNotes,
+          capabilities: connector.descriptor.capabilities,
+          scanIntervalMinutes: connector.descriptor.defaultScanIntervalMinutes,
+          isEnabled: true,
+        },
+        update: {
+          description: connector.descriptor.description,
+          complianceNotes: connector.descriptor.complianceNotes,
+          capabilities: connector.descriptor.capabilities,
+        },
+      });
 
-    const existing = await this.prisma.sourceConnection.findUnique({
-      where: { sourceId_label: { sourceId: source.id, label: 'default' } },
-    });
-    if (!existing) {
-      const config = defaultHnConfig();
-      config.maxResults = hn.descriptor.defaultMaxResults;
-      await this.prisma.sourceConnection.create({
-        data: {
-          sourceId: source.id,
-          label: 'default',
-          status: 'CONFIGURED',
-          config: config as Prisma.InputJsonValue,
-          credentialsEnv: hn.descriptor.credentialsEnv,
+      const existing = await this.prisma.sourceConnection.findUnique({
+        where: { sourceId_label: { sourceId: source.id, label: 'default' } },
+      });
+      if (!existing) {
+        await this.prisma.sourceConnection.create({
+          data: {
+            sourceId: source.id,
+            label: 'default',
+            status: 'CONFIGURED',
+            config: defaultConfig as Prisma.InputJsonValue,
+            credentialsEnv: connector.descriptor.credentialsEnv,
+          },
+        });
+      }
+    }
+
+    for (const src of IMPORT_ONLY_SOURCES) {
+      await this.prisma.source.upsert({
+        where: { key: src.key },
+        create: {
+          key: src.key,
+          name: src.name,
+          platform: src.platform,
+          accessMethod: 'MANUAL_IMPORT',
+          description: src.description,
+          complianceNotes: src.complianceNotes,
+          capabilities: ['import'],
+          scanIntervalMinutes: 0,
+          isEnabled: true,
+        },
+        update: {
+          description: src.description,
+          complianceNotes: src.complianceNotes,
+          capabilities: ['import'],
+          accessMethod: 'MANUAL_IMPORT',
+          isEnabled: true,
         },
       });
     }
@@ -381,7 +411,7 @@ export class SourcesService {
     },
   ) {
     const connector = this.connectors.get(s.key);
-    const isManual = s.key === MANUAL_IMPORT_SOURCE_KEY;
+    const isManual = s.key === MANUAL_IMPORT_SOURCE_KEY || s.accessMethod === 'MANUAL_IMPORT';
     const connection = s.connections[0] ?? null;
     const config = (connection?.config as Record<string, unknown> | null) ?? {};
     const configErrors = connector ? connector.validateConfig(config) : [];

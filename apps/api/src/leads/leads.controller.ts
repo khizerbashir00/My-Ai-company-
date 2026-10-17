@@ -51,7 +51,7 @@ export class LeadsController {
   @Post('import/preview')
   @HttpCode(200)
   previewImport(@Body() dto: CsvImportPreviewDto) {
-    return this.leads.previewImport(dto.csv);
+    return this.leads.previewImport(dto.csv, dto.sourceKey);
   }
 
   @Roles(...WRITE_ROLES)

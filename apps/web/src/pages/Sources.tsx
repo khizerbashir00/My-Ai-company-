@@ -78,15 +78,25 @@ interface ScanRun {
 }
 
 const STATUS_LABEL: Record<DisplayStatus, string> = {
-  MANUAL_FALLBACK: 'Manual fallback',
+  MANUAL_FALLBACK: 'Import only',
   UNIMPLEMENTED: 'Not implemented',
   UNCONFIGURED: 'Unconfigured',
-  UNAUTHORIZED: 'Unauthorized',
+  UNAUTHORIZED: 'Credentials missing',
   UNAVAILABLE: 'Unavailable',
   DISABLED: 'Disabled',
   ERROR: 'Error',
   CONFIGURED: 'Configured',
   WORKING: 'Working',
+};
+
+const IMPORT_GUIDANCE: Record<string, string> = {
+  linkedin:
+    'Export leads from LinkedIn Sales Navigator or your own saved list → import the CSV here. We do not scrape LinkedIn or accept a personal login for harvesting.',
+  facebook:
+    'Export Meta Ads lead forms or other CSV exports you already have → import here. No Facebook group scraping or password connect.',
+  indeed:
+    'Export contacts or listings you are allowed to keep under Indeed’s terms → import the CSV here. No Indeed scraping.',
+  manual_import: 'Add leads by hand or paste a CSV you collected yourself.',
 };
 
 const STATUS_CLASS: Record<DisplayStatus, string> = {
@@ -165,9 +175,14 @@ export function SourcesPage() {
 function SourceCard({ source: s, canWrite, onChanged }: { source: SourceItem; canWrite: boolean; onChanged: () => void }) {
   const [editing, setEditing] = useState(false);
   const [query, setQuery] = useState(String(s.connection?.config?.query ?? ''));
+  const [subreddits, setSubreddits] = useState(String(s.connection?.config?.subreddits ?? ''));
   const [maxResults, setMaxResults] = useState(String(s.connection?.config?.maxResults ?? s.connector?.defaultMaxResults ?? 40));
   const [intervalMin, setIntervalMin] = useState(String(s.scanIntervalMinutes));
   const [scanMsg, setScanMsg] = useState<string | null>(null);
+  const isImportOnly = s.accessMethod === 'MANUAL_IMPORT';
+  const isReddit = s.key === 'reddit';
+  const statusLabel =
+    s.key === 'manual_import' && s.displayStatus === 'MANUAL_FALLBACK' ? 'Manual fallback' : STATUS_LABEL[s.displayStatus];
 
   const save = useMutation({
     mutationFn: () =>
@@ -175,6 +190,7 @@ function SourceCard({ source: s, canWrite, onChanged }: { source: SourceItem; ca
         config: {
           ...(s.connection?.config ?? {}),
           query: query.trim(),
+          ...(isReddit ? { subreddits: subreddits.trim() } : {}),
           maxResults: Number(maxResults) || 40,
         },
         scanIntervalMinutes: Number(intervalMin) || 0,
@@ -198,7 +214,7 @@ function SourceCard({ source: s, canWrite, onChanged }: { source: SourceItem; ca
     <Section
       title={s.name}
       aside={
-        <span className={cx('text-[13px] font-semibold', STATUS_CLASS[s.displayStatus])}>{STATUS_LABEL[s.displayStatus]}</span>
+        <span className={cx('text-[13px] font-semibold', STATUS_CLASS[s.displayStatus])}>{statusLabel}</span>
       }
     >
       <div className="space-y-3 px-4 py-4 text-sm">
@@ -225,12 +241,28 @@ function SourceCard({ source: s, canWrite, onChanged }: { source: SourceItem; ca
         {s.connection?.lastError && <p className="text-[13px] text-st-failed">Last error: {s.connection.lastError}</p>}
         {s.configErrors.length > 0 && <p className="text-[13px] text-st-waiting">Config: {s.configErrors.join(' ')}</p>}
 
-        {s.key === 'manual_import' && (
-          <p className="text-ink-2">
-            Use <Link className="font-medium text-brand hover:underline" to="/leads?new=1">New lead</Link> or{' '}
-            <Link className="font-medium text-brand hover:underline" to="/leads?import=1">CSV import</Link> when remote connectors are
-            unavailable.
-          </p>
+        {isImportOnly && (
+          <div className="space-y-2">
+            <p className="text-ink-2">{IMPORT_GUIDANCE[s.key] ?? IMPORT_GUIDANCE.manual_import}</p>
+            {canWrite && (
+              <div className="flex flex-wrap gap-2">
+                {s.key === 'manual_import' && (
+                  <Link
+                    to="/leads?new=1"
+                    className="inline-flex h-9 items-center gap-2 rounded-md border border-rule-strong bg-panel px-3 text-sm font-medium text-ink-2 hover:text-ink"
+                  >
+                    New lead
+                  </Link>
+                )}
+                <Link
+                  to={`/leads?import=1&sourceKey=${encodeURIComponent(s.key)}`}
+                  className="inline-flex h-9 items-center gap-2 rounded-md border border-rule-strong bg-brand px-3 text-sm font-medium text-white hover:opacity-90"
+                >
+                  Import CSV → {s.name}
+                </Link>
+              </div>
+            )}
+          </div>
         )}
 
         {s.connector && (
@@ -239,7 +271,23 @@ function SourceCard({ source: s, canWrite, onChanged }: { source: SourceItem; ca
             <a className="text-brand hover:underline" href={s.connector.documentationUrl} target="_blank" rel="noreferrer">
               {s.connector.documentationUrl}
             </a>
-            {s.connector.credentialsEnv ? ` · Credentials env: ${s.connector.credentialsEnv}` : ' · No API key required'}
+            {s.connector.credentialsEnv
+              ? ` · Credentials: ${
+                  s.authorized
+                    ? 'ready'
+                    : `missing (set ${s.connector.credentialsEnv}${s.key === 'reddit' ? ' and REDDIT_CLIENT_SECRET' : ''} in apps/api/.env)`
+                }`
+              : ' · No API key required'}
+          </p>
+        )}
+        {s.displayStatus === 'UNAUTHORIZED' && s.key === 'reddit' && (
+          <p className="text-[13px] text-st-waiting">
+            Create a free app at{' '}
+            <a className="text-brand hover:underline" href="https://www.reddit.com/prefs/apps" target="_blank" rel="noreferrer">
+              reddit.com/prefs/apps
+            </a>
+            , set <code className="text-[12px]">REDDIT_CLIENT_ID</code> and <code className="text-[12px]">REDDIT_CLIENT_SECRET</code> in{' '}
+            <code className="text-[12px]">apps/api/.env</code>, then restart the API.
           </p>
         )}
 
@@ -274,6 +322,11 @@ function SourceCard({ source: s, canWrite, onChanged }: { source: SourceItem; ca
             <Field label="Search query" hint="Full-text query sent to the provider API.">
               {(id) => <Textarea id={id} value={query} onChange={(e) => setQuery(e.target.value)} rows={3} required />}
             </Field>
+            {isReddit && (
+              <Field label="Subreddits" hint="Comma-separated (e.g. forhire, webdev).">
+                {(id) => <Input id={id} value={subreddits} onChange={(e) => setSubreddits(e.target.value)} required />}
+              </Field>
+            )}
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="Max results per scan">
                 {(id) => <Input id={id} type="number" min={1} max={200} value={maxResults} onChange={(e) => setMaxResults(e.target.value)} />}

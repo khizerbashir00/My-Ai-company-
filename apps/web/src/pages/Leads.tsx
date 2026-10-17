@@ -22,6 +22,7 @@ export function LeadsPage() {
   const page = Number(params.get('page') ?? 1);
   const showNew = params.get('new') === '1';
   const showImport = params.get('import') === '1';
+  const importSourceKey = params.get('sourceKey') ?? 'manual_import';
 
   const [searchDraft, setSearchDraft] = useState(search);
   useEffect(() => {
@@ -113,7 +114,7 @@ export function LeadsPage() {
           {status.data?.sources.map((s) => (
             <option key={s.id} value={s.id}>
               {s.name}
-              {s.accessMethod === 'MANUAL_IMPORT' ? ' (manual)' : ''}
+              {s.accessMethod === 'MANUAL_IMPORT' ? ' (import)' : ''}
             </option>
           ))}
         </Select>
@@ -264,7 +265,12 @@ export function LeadsPage() {
       )}
 
       {showNew && <NewLeadDialog onClose={() => update({ new: null })} />}
-      {showImport && <ImportDialog onClose={() => update({ import: null })} />}
+      {showImport && (
+        <ImportDialog
+          sourceKey={importSourceKey}
+          onClose={() => update({ import: null, sourceKey: null })}
+        />
+      )}
     </>
   );
 }
@@ -388,20 +394,31 @@ function NewLeadDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
-function ImportDialog({ onClose }: { onClose: () => void }) {
-  const qc = useQueryClient();
-  const [csv, setCsv] = useState(
+const IMPORT_CSV_STARTERS: Record<string, string> = {
+  linkedin:
+    'name,source_url,contact_name,contact_email,requirements,external_id\nAcme Clinic,https://www.linkedin.com/in/example-founder,Jane Doe,,Need a clinic website,\n',
+  facebook:
+    'name,source_url,contact_name,contact_email,requirements,external_id\nMeta lead — Acme,https://facebook.com/example-post,Jane Doe,jane@example.com,Requested a quote via lead form,\n',
+  indeed:
+    'name,source_url,contact_name,contact_email,requirements,external_id\nHiring — web developer,https://www.indeed.com/viewjob?jk=example,,,Looking for freelance web developer,\n',
+  manual_import:
     'name,source_url,contact_name,contact_email,requirements,external_id\n',
-  );
+};
+
+function ImportDialog({ onClose, sourceKey = 'manual_import' }: { onClose: () => void; sourceKey?: string }) {
+  const qc = useQueryClient();
+  const [csv, setCsv] = useState(IMPORT_CSV_STARTERS[sourceKey] ?? IMPORT_CSV_STARTERS.manual_import);
   const [preview, setPreview] = useState<{
     validCount: number;
     errorCount: number;
     isManualImport: boolean;
+    source?: { id: string; key: string; name: string; accessMethod: string };
     rows: { row: number; errors: string[]; data: unknown; raw: Record<string, string> }[];
   } | null>(null);
 
   const runPreview = useMutation({
-    mutationFn: () => api.post<NonNullable<typeof preview>>('/leads/import/preview', { csv }),
+    mutationFn: () =>
+      api.post<NonNullable<typeof preview>>('/leads/import/preview', { csv, sourceKey }),
     onSuccess: setPreview,
   });
   const confirm = useMutation({
@@ -416,12 +433,15 @@ function ImportDialog({ onClose }: { onClose: () => void }) {
     },
   });
 
+  const tagName = preview?.source?.name ?? (sourceKey === 'manual_import' ? 'Manual import' : sourceKey);
+
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 p-4 sm:items-center" role="dialog" aria-modal>
       <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-panel p-5 shadow-lg">
         <h2 className="text-lg font-semibold">Import CSV</h2>
         <p className="mt-1 text-sm text-ink-2">
-          Rows are validated before save. All imports are tagged as <strong>Manual import</strong> — not a live connector.
+          Rows are validated before save. Imports are tagged as <strong>{tagName}</strong> (CSV / export path — not a live connector
+          scan).
         </p>
         <div className="mt-4">
           <Field label="CSV">

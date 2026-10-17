@@ -1,7 +1,15 @@
 import { ToolExecutorService } from './tool-executor.service';
 
 describe('ToolExecutorService.authorize', () => {
-  const tools = new ToolExecutorService(null as never, null as never, null as never, null as never, null as never, null as never);
+  const tools = new ToolExecutorService(
+    null as never,
+    null as never,
+    null as never,
+    null as never,
+    null as never,
+    null as never,
+    null as never,
+  );
 
   const base = {
     agentTools: ['delegate_task', 'submit_result'],

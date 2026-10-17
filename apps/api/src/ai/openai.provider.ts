@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import OpenAI from 'openai';
-import { zodTextFormat } from 'openai/helpers/zod';
+import { zodResponseFormat, zodTextFormat } from 'openai/helpers/zod';
 import { AppConfigService } from '../config/app-config.service';
 import { AiCancelledError, AiCredentialsError, AiOutputValidationError, AiProviderError } from './ai.errors';
 import type { AiCompletionResult, AiProvider, AiStructuredRequest } from './ai.types';
@@ -37,14 +37,77 @@ export class OpenAiProvider implements AiProvider {
     });
 
     try {
-      // OpenRouter free models often break official structured-output parse helpers.
       if (useOpenRouter) {
-        return await this.completeViaChatJsonWithFallback(client, req);
+        // Paid OpenRouter models (gpt-4o-mini etc.) support chat structured outputs.
+        // Free :free slugs usually do not — use loose JSON / plain-text coerce for those.
+        if (isFreeOpenRouterModel(req.model)) {
+          return await this.completeViaChatJsonWithFallback(client, req);
+        }
+        try {
+          return await this.completeViaChatParse(client, req);
+        } catch (err) {
+          this.logger.warn(
+            `OpenRouter structured parse failed for ${req.model}; falling back to JSON coerce: ${err instanceof Error ? err.message.slice(0, 160) : err}`,
+          );
+          return await this.completeViaChatJson(client, req);
+        }
       }
       return await this.completeViaResponses(client, req);
     } catch (err) {
       throw mapProviderError(err, this.logger);
     }
+  }
+
+  /** Official JSON-schema parse path (works well on gpt-4o-mini via OpenRouter). */
+  private async completeViaChatParse<T>(client: OpenAI, req: AiStructuredRequest<T>): Promise<AiCompletionResult<T>> {
+    const response = await client.chat.completions.parse(
+      {
+        model: req.model,
+        temperature: req.temperature ?? 0.2,
+        max_tokens: req.maxOutputTokens,
+        messages: req.messages.map((m) => ({ role: m.role, content: m.content })),
+        response_format: zodResponseFormat(req.schema, req.schemaName),
+      },
+      { signal: req.signal },
+    );
+
+    const message = response.choices[0]?.message;
+    const parsed = message?.parsed;
+    if (parsed == null) {
+      const raw = message?.content?.trim() ?? '';
+      const coerced = coerceToSchema(req.schema, raw);
+      if (coerced != null) {
+        return {
+          data: coerced,
+          model: response.model || req.model,
+          provider: 'openai',
+          usage: {
+            inputTokens: response.usage?.prompt_tokens ?? 0,
+            outputTokens: response.usage?.completion_tokens ?? 0,
+            totalTokens: response.usage?.total_tokens ?? 0,
+          },
+          rawText: raw,
+        };
+      }
+      throw new AiOutputValidationError('Model returned no structured output.');
+    }
+
+    const checked = req.schema.safeParse(parsed);
+    if (!checked.success) {
+      throw new AiOutputValidationError('Model output failed schema validation.', checked.error.flatten());
+    }
+
+    return {
+      data: checked.data,
+      model: response.model || req.model,
+      provider: 'openai',
+      usage: {
+        inputTokens: response.usage?.prompt_tokens ?? 0,
+        outputTokens: response.usage?.completion_tokens ?? 0,
+        totalTokens: response.usage?.total_tokens ?? 0,
+      },
+      rawText: message?.content ?? '',
+    };
   }
 
   /** Try primary model, then other free OpenRouter slugs on 404 / rate-limit. */
@@ -176,6 +239,11 @@ export class OpenAiProvider implements AiProvider {
       rawText: raw,
     };
   }
+}
+
+function isFreeOpenRouterModel(model: string): boolean {
+  const m = model.trim().toLowerCase();
+  return m === 'openrouter/free' || m.endsWith(':free');
 }
 
 function uniqueModels(models: Array<string | null | undefined>): string[] {

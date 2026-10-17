@@ -51,15 +51,19 @@ describe('Lead source connectors (e2e)', () => {
     throw new Error(`Scan ${scanRunId} did not finish`);
   }
 
-  it('lists Hacker News as implemented/configured and never claims unimplemented platforms', async () => {
+  it('lists live connectors and import-only platforms without claiming LinkedIn/Facebook as scanning', async () => {
     const res = await ceo.get('/api/sources').expect(200);
     expect(res.body.jobsMode).toBe('inline');
-    expect(res.body.implementedConnectors.map((c: { key: string }) => c.key)).toEqual([HN_SOURCE_KEY]);
+    expect(res.body.implementedConnectors.map((c: { key: string }) => c.key).sort()).toEqual(
+      [HN_SOURCE_KEY, 'reddit'].sort(),
+    );
     const keys = res.body.items.map((s: { key: string }) => s.key);
     expect(keys).toContain('manual_import');
     expect(keys).toContain(HN_SOURCE_KEY);
-    expect(keys).not.toContain('reddit');
-    expect(keys).not.toContain('linkedin');
+    expect(keys).toContain('reddit');
+    expect(keys).toContain('linkedin');
+    expect(keys).toContain('facebook');
+    expect(keys).toContain('indeed');
 
     const hn = res.body.items.find((s: { key: string }) => s.key === HN_SOURCE_KEY);
     expect(hn.displayStatus).toBe('CONFIGURED');
@@ -67,8 +71,12 @@ describe('Lead source connectors (e2e)', () => {
     expect(hn.authorized).toBe(true);
     expect(hn.permissions.canScan).toBe(true);
 
-    const manual = res.body.items.find((s: { key: string }) => s.key === 'manual_import');
-    expect(manual.displayStatus).toBe('MANUAL_FALLBACK');
+    for (const key of ['linkedin', 'facebook', 'indeed', 'manual_import']) {
+      const row = res.body.items.find((s: { key: string }) => s.key === key);
+      expect(row.displayStatus).toBe('MANUAL_FALLBACK');
+      expect(row.permissions.canScan).toBe(false);
+      expect(row.accessMethod).toBe('MANUAL_IMPORT');
+    }
   });
 
   it('runs a mocked HN scan, creates leads with source evidence, and dedupes on repeat', async () => {

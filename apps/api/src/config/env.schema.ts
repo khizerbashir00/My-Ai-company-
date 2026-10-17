@@ -47,6 +47,13 @@ export const envSchema = z.object({
   THROTTLE_LIMIT: z.coerce.number().int().min(10).max(10_000).default(120),
   /** Graceful shutdown wait for in-flight work (ms). */
   SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(15_000),
+  /** Reddit OAuth app (https://www.reddit.com/prefs/apps). Optional until you enable Reddit scans. */
+  REDDIT_CLIENT_ID: optionalString,
+  REDDIT_CLIENT_SECRET: optionalString,
+  /** Optional user refresh token; when unset, client_credentials is used. */
+  REDDIT_REFRESH_TOKEN: optionalString,
+  /** Optional custom User-Agent (Reddit requires a descriptive UA). */
+  REDDIT_USER_AGENT: optionalString,
 });
 
 export type Env = z.infer<typeof envSchema>;

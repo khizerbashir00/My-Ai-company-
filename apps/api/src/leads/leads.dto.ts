@@ -102,6 +102,8 @@ export class ListLeadsQueryDto extends PageQueryDto {
 
 export class CsvImportPreviewDto {
   @IsString() @MinLength(1) @MaxLength(2_000_000) csv: string;
+  /** Optional source key (e.g. linkedin, facebook, indeed). Defaults to manual_import. */
+  @IsOptional() @Transform(trim) @IsString() @MaxLength(64) sourceKey?: string;
 }
 
 export class CsvImportConfirmDto {

@@ -3,6 +3,7 @@ import { Prisma, type PrismaClient } from '../generated/prisma/client';
 import { AGENTS, DEPARTMENTS } from '../agents/agent-catalog';
 import { PERMISSIONS } from '../agents/registry';
 import { defaultHnConfig, HN_SOURCE_KEY } from '../connectors/hacker-news/hn.connector';
+import { defaultRedditConfig, REDDIT_SOURCE_KEY } from '../connectors/reddit/reddit.connector';
 
 export interface SeedOptions {
   ceo?: { email: string; name: string; password: string };
@@ -16,6 +17,37 @@ export interface SeedResult {
 
 export const BCRYPT_ROUNDS = 12;
 export const MANUAL_IMPORT_SOURCE_KEY = 'manual_import';
+
+/** CSV / export import only — no live scraping or fake “connected” scan. */
+export const IMPORT_ONLY_SOURCES = [
+  {
+    key: 'linkedin',
+    name: 'LinkedIn',
+    platform: 'linkedin',
+    description:
+      'Import leads you export yourself (e.g. LinkedIn Sales Navigator or saved leads CSV). No live LinkedIn API scanning in this product.',
+    complianceNotes:
+      'Do not scrape LinkedIn. Only import contacts you are permitted to store and contact. Keep the original profile or post URL on every row.',
+  },
+  {
+    key: 'facebook',
+    name: 'Facebook / Meta',
+    platform: 'facebook',
+    description:
+      'Import leads from Meta Ads lead exports or other CSV exports you already have. No Facebook group scraping or password login.',
+    complianceNotes:
+      'Use official Meta export tools only. No scraping of groups or personal profiles. Keep provenance URLs where available.',
+  },
+  {
+    key: 'indeed',
+    name: 'Indeed',
+    platform: 'indeed',
+    description:
+      'Import job-seeker or employer contacts from CSV exports you collected under Indeed’s terms. No Indeed scraping.',
+    complianceNotes:
+      'Indeed Publisher / partner APIs are out of scope. Only import data you are allowed to retain and contact.',
+  },
+] as const;
 
 /**
  * Idempotent seed. Creates missing records only — it never overwrites instructions,
@@ -77,7 +109,7 @@ export async function seedDatabase(prisma: PrismaClient, opts: SeedOptions = {})
     update: {},
   });
 
-  // Only seed connectors that are actually implemented — never claim Reddit/LinkedIn/etc.
+  // Live API connectors that are implemented in the registry.
   const hn = await prisma.source.upsert({
     where: { key: HN_SOURCE_KEY },
     create: {
@@ -106,6 +138,63 @@ export async function seedDatabase(prisma: PrismaClient, opts: SeedOptions = {})
         label: 'default',
         status: 'CONFIGURED',
         config: config as Prisma.InputJsonValue,
+      },
+    });
+  }
+
+  const reddit = await prisma.source.upsert({
+    where: { key: REDDIT_SOURCE_KEY },
+    create: {
+      key: REDDIT_SOURCE_KEY,
+      name: 'Reddit',
+      platform: 'reddit',
+      accessMethod: 'OFFICIAL_API',
+      description:
+        'Public Reddit posts via the official OAuth API. Create a free app at reddit.com/prefs/apps and set REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET.',
+      complianceNotes:
+        'OAuth API only. No scraping, no password login, no CAPTCHA bypass. Stay within Reddit rate limits.',
+      capabilities: ['search', 'pagination', 'public_posts'],
+      scanIntervalMinutes: 360,
+      isEnabled: true,
+    },
+    update: {},
+  });
+  const redditConnection = await prisma.sourceConnection.findUnique({
+    where: { sourceId_label: { sourceId: reddit.id, label: 'default' } },
+  });
+  if (!redditConnection) {
+    await prisma.sourceConnection.create({
+      data: {
+        sourceId: reddit.id,
+        label: 'default',
+        status: 'CONFIGURED',
+        config: defaultRedditConfig() as Prisma.InputJsonValue,
+        credentialsEnv: 'REDDIT_CLIENT_ID',
+      },
+    });
+  }
+
+  // Honest import-only rows — not live scanners.
+  for (const src of IMPORT_ONLY_SOURCES) {
+    await prisma.source.upsert({
+      where: { key: src.key },
+      create: {
+        key: src.key,
+        name: src.name,
+        platform: src.platform,
+        accessMethod: 'MANUAL_IMPORT',
+        description: src.description,
+        complianceNotes: src.complianceNotes,
+        capabilities: ['import'],
+        scanIntervalMinutes: 0,
+        isEnabled: true,
+      },
+      update: {
+        description: src.description,
+        complianceNotes: src.complianceNotes,
+        capabilities: ['import'],
+        accessMethod: 'MANUAL_IMPORT',
+        isEnabled: true,
       },
     });
   }
