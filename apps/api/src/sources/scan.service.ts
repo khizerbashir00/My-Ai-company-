@@ -8,10 +8,13 @@ import { PrismaService } from '../prisma/prisma.service';
 import { TasksService } from '../tasks/tasks.service';
 
 const SCAN_TIMEOUT_MS = 120_000;
+export const SCAN_STOPPED_MESSAGE = 'Stopped from the Control Center. Use Restart Failed to scan again.';
 
 @Injectable()
 export class ScanService {
   private readonly logger = new Logger(ScanService.name);
+  /** In-flight scans in this process, so Stop All can abort them. */
+  private readonly active = new Map<string, { controller: AbortController; stopped: boolean }>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -71,6 +74,8 @@ export class ScanService {
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), SCAN_TIMEOUT_MS);
+    const handle = { controller, stopped: false };
+    this.active.set(scanRunId, handle);
 
     await this.prisma.sourceScanRun.update({
       where: { id: scanRunId },
@@ -173,7 +178,7 @@ export class ScanService {
         );
       }
     } catch (err) {
-      const message = publicScanError(err);
+      const message = handle.stopped ? SCAN_STOPPED_MESSAGE : publicScanError(err);
       await this.prisma.$transaction([
         this.prisma.sourceScanRun.update({
           where: { id: scanRunId },
@@ -197,7 +202,22 @@ export class ScanService {
       throw err;
     } finally {
       clearTimeout(timer);
+      this.active.delete(scanRunId);
     }
+  }
+
+  /** Scan run ids currently executing in this process. */
+  activeRunIds(): string[] {
+    return [...this.active.keys()];
+  }
+
+  /** Abort every in-flight scan (Control Center Stop All). Each run is recorded as FAILED with a clear reason. */
+  abortAll(): number {
+    for (const h of this.active.values()) {
+      h.stopped = true;
+      h.controller.abort();
+    }
+    return this.active.size;
   }
 
   /** Create a qualification worker task for a newly discovered lead (idempotent). */

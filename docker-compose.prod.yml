@@ -68,6 +68,8 @@ services:
       # Browser hits the public origin; nginx proxies /api same-origin. CORS list is a safety net.
       CORS_ORIGINS: ${CORS_ORIGINS:-https://${HQ_DOMAIN}}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      # Was missing: without it OpenRouter/other OpenAI-compatible endpoints silently fell back to api.openai.com.
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-}
       OPENAI_MODEL_ADVANCED: ${OPENAI_MODEL_ADVANCED:-}
       EMAIL_PROVIDER: ${EMAIL_PROVIDER:-}
@@ -83,6 +85,25 @@ services:
       THROTTLE_LIMIT: ${THROTTLE_LIMIT:-120}
       RUN_MIGRATIONS_ON_START: ${RUN_MIGRATIONS_ON_START:-1}
       SHUTDOWN_TIMEOUT_MS: ${SHUTDOWN_TIMEOUT_MS:-15000}
+      # Reddit lead source + Reddit OAuth (were documented in .env.production.example but never passed through)
+      REDDIT_CLIENT_ID: ${REDDIT_CLIENT_ID:-}
+      REDDIT_CLIENT_SECRET: ${REDDIT_CLIENT_SECRET:-}
+      REDDIT_REFRESH_TOKEN: ${REDDIT_REFRESH_TOKEN:-}
+      REDDIT_USER_AGENT: ${REDDIT_USER_AGENT:-}
+      REDDIT_SCOPES: ${REDDIT_SCOPES:-}
+      # Social OAuth connections (Control Center)
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-https://${HQ_DOMAIN}}
+      TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY:-}
+      LINKEDIN_CLIENT_ID: ${LINKEDIN_CLIENT_ID:-}
+      LINKEDIN_CLIENT_SECRET: ${LINKEDIN_CLIENT_SECRET:-}
+      LINKEDIN_SCOPES: ${LINKEDIN_SCOPES:-}
+      FACEBOOK_APP_ID: ${FACEBOOK_APP_ID:-}
+      FACEBOOK_APP_SECRET: ${FACEBOOK_APP_SECRET:-}
+      FACEBOOK_GRAPH_VERSION: ${FACEBOOK_GRAPH_VERSION:-}
+      FACEBOOK_SCOPES: ${FACEBOOK_SCOPES:-}
+      X_CLIENT_ID: ${X_CLIENT_ID:-}
+      X_CLIENT_SECRET: ${X_CLIENT_SECRET:-}
+      X_SCOPES: ${X_SCOPES:-}
     healthcheck:
       test: ['CMD', 'curl', '-fsS', 'http://127.0.0.1:3000/api/health/ready']
       interval: 15s

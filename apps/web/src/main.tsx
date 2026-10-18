@@ -9,6 +9,7 @@ import { ApiError } from './lib/api';
 import { AuthProvider, useAuth } from './lib/auth';
 import { AgentDetailPage } from './pages/AgentDetail';
 import { ApprovalsPage } from './pages/Approvals';
+import { ControlPage } from './pages/Control';
 import { LeadDetailPage } from './pages/LeadDetail';
 import { LeadsPage } from './pages/Leads';
 import { LoginPage } from './pages/Login';
@@ -68,6 +69,7 @@ createRoot(document.getElementById('root')!).render(
               }
             >
               <Route index element={<OverviewPage />} />
+              <Route path="control" element={<ControlPage />} />
               <Route path="leads" element={<LeadsPage />} />
               <Route path="leads/:id" element={<LeadDetailPage />} />
               <Route path="sources" element={<SourcesPage />} />

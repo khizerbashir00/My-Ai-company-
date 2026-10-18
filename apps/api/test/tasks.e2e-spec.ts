@@ -140,15 +140,18 @@ describe('Tasks and the task state machine (e2e)', () => {
 
     it('detects a concurrent change (compare-and-set)', async () => {
       const { task } = await create({ title: 'Race test' });
+      // Both actors try to claim the same task. Whether the requests truly overlap (compare-and-set → 409)
+      // or are serialized by the server (second sees RUNNING → RUNNING, illegal → 400), exactly one may win.
+      // (The previous RUNNING-vs-CANCELLED version was timing-dependent: serialized, both moves are legal.)
       const [a, b] = await Promise.all([
         ceo.post(`/api/tasks/${task.id}/transition`).send({ to: 'RUNNING' }),
-        ceo.post(`/api/tasks/${task.id}/transition`).send({ to: 'CANCELLED' }),
+        ceo.post(`/api/tasks/${task.id}/transition`).send({ to: 'RUNNING' }),
       ]);
       const codes = [a.status, b.status].sort();
-      // Exactly one wins; the other is rejected as a conflict or an now-illegal transition.
       expect(codes[0]).toBe(200);
       expect([400, 409]).toContain(codes[1]);
       expect(await prisma.taskEvent.count({ where: { taskId: task.id, type: 'status_changed' } })).toBe(1);
+      expect((await prisma.task.findUniqueOrThrow({ where: { id: task.id } })).attempts).toBe(1);
     });
   });
 

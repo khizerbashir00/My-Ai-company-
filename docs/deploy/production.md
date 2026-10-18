@@ -55,6 +55,26 @@ curl -fsS "https://$HQ_DOMAIN/api/health/ready"
 
 Migrations run on API start via `prisma migrate deploy` (**non-destructive** — never uses `migrate reset` in production).
 
+## 3b. Social connections (LinkedIn, Facebook, Reddit, X)
+
+1. Set `PUBLIC_APP_URL=https://YOUR_DOMAIN` (exactly the address you open HQ at — `https://`, no trailing slash) and
+   `TOKEN_ENCRYPTION_KEY=$(openssl rand -base64 32)` in `.env.production`. Keep the key stable; changing it makes stored
+   tokens unreadable and you would have to reconnect each platform.
+2. Register these redirect URLs in each developer console (they are also shown, with a Copy button, in
+   **Control Center → Social connections → Setup steps**):
+   - `https://YOUR_DOMAIN/api/social/linkedin/callback`
+   - `https://YOUR_DOMAIN/api/social/facebook/callback`
+   - `https://YOUR_DOMAIN/api/social/reddit/callback`
+   - `https://YOUR_DOMAIN/api/social/x/callback`
+3. Fill the client IDs/secrets (`LINKEDIN_*`, `FACEBOOK_*`, `REDDIT_*`, `X_*`) and restart the API:
+   `docker compose -f docker-compose.prod.yml --env-file .env.production up -d api`
+4. Sign in as the CEO → **Control Center** → **Connect** (or **Connect All**) → approve on each platform.
+   Then press **Test** on each card: it calls the platform's identity API with the stored token.
+
+Platform approvals you may need: LinkedIn "Share on LinkedIn" + "Sign In with LinkedIn using OpenID Connect" products;
+Meta App Review + Business Verification for `pages_*` permissions (admins/testers work before review); Reddit
+Responsible Builder Policy approval for new OAuth apps; a paid X API tier for posting.
+
 ## 4. Bootstrap the CEO account (once)
 
 ```bash

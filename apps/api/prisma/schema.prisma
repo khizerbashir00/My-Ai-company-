@@ -3,7 +3,9 @@
 // Conventions
 // - Table and column names are snake_case in PostgreSQL (via @@map / @map); Prisma fields are camelCase.
 // - Every table has created_at; mutable tables also have updated_at.
-// - Secrets are NEVER stored here. Source connections reference the *name* of an env var that holds a credential.
+// - App secrets are NEVER stored here. Source connections reference the *name* of an env var that holds a credential.
+//   The one exception is per-user OAuth tokens (social_accounts), which cannot live in env vars; they are
+//   AES-256-GCM encrypted with TOKEN_ENCRYPTION_KEY and never leave the server.
 // - Lead de-duplication happens at lead_sources level: (source_id, external_id) and (source_id, canonical_url) are unique.
 //   Leads are never merged on name similarity alone.
 
@@ -1184,6 +1186,104 @@ model Project {
 
   @@index([confirmedAt])
   @@map("projects")
+}
+
+// ─────────────────────────────── Social connections ───────────────────────────────
+
+enum SocialPlatform {
+  LINKEDIN
+  FACEBOOK
+  REDDIT
+  X
+}
+
+enum SocialAccountStatus {
+  CONNECTED
+  EXPIRED
+  ERROR
+}
+
+/// One authorized account per platform for the company.
+/// Tokens are AES-256-GCM encrypted at rest (TOKEN_ENCRYPTION_KEY) and never returned by the API.
+model SocialAccount {
+  id                String              @id @default(uuid()) @db.Uuid
+  platform          SocialPlatform      @unique
+  status            SocialAccountStatus @default(CONNECTED)
+  /// Platform's own id for the authorized account
+  externalAccountId String              @map("external_account_id")
+  displayName       String              @map("display_name")
+  profileUrl        String?             @map("profile_url")
+  scopes            String[]            @default([])
+  accessTokenEnc    String              @map("access_token_enc")
+  refreshTokenEnc   String?             @map("refresh_token_enc")
+  expiresAt         DateTime?           @map("expires_at")
+  refreshExpiresAt  DateTime?           @map("refresh_expires_at")
+  /// Non-secret extras (e.g. Facebook page names). Never tokens.
+  metadata          Json?
+  connectedById     String?             @map("connected_by_id") @db.Uuid
+  connectedAt       DateTime            @default(now()) @map("connected_at")
+  lastVerifiedAt    DateTime?           @map("last_verified_at")
+  lastRefreshedAt   DateTime?           @map("last_refreshed_at")
+  lastError         String?             @map("last_error")
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  @@map("social_accounts")
+}
+
+/// Pending OAuth authorization (CSRF state + PKCE verifier). Single use, short-lived.
+model OAuthState {
+  id                String         @id @default(uuid()) @db.Uuid
+  /// SHA-256 of the state value sent to the provider — the raw value is never stored
+  stateHash         String         @unique @map("state_hash")
+  platform          SocialPlatform
+  userId            String         @map("user_id") @db.Uuid
+  /// Encrypted PKCE code verifier (X); null for providers without PKCE
+  codeVerifierEnc   String?        @map("code_verifier_enc")
+  /// Continue the Connect All chain after the callback
+  connectAll        Boolean        @default(false) @map("connect_all")
+  expiresAt         DateTime       @map("expires_at")
+  consumedAt        DateTime?      @map("consumed_at")
+  createdAt         DateTime       @default(now()) @map("created_at")
+
+  @@index([expiresAt])
+  @@map("oauth_states")
+}
+
+// ─────────────────────────────── Control center ───────────────────────────────
+
+/// Persisted on/off switch for each background workflow, so Stop All survives restarts.
+model WorkflowControl {
+  key           String    @id
+  isEnabled     Boolean   @map("is_enabled")
+  updatedById   String?   @map("updated_by_id") @db.Uuid
+  lastStartedAt DateTime? @map("last_started_at")
+  lastStoppedAt DateTime? @map("last_stopped_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  @@map("workflow_controls")
+}
+
+enum ControlEventLevel {
+  INFO
+  WARN
+  ERROR
+}
+
+/// Operations log for the Control Center (start/stop, recovery, worker results, OAuth results).
+model ControlEvent {
+  id          String            @id @default(uuid()) @db.Uuid
+  level       ControlEventLevel @default(INFO)
+  /// e.g. control.start_all, worker.task_completed, social.connected, recovery.task_failed
+  action      String
+  message     String
+  data        Json?
+  actorUserId String?           @map("actor_user_id") @db.Uuid
+  createdAt   DateTime          @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("control_events")
 }
 
 /// Append-only. Who did what, when.

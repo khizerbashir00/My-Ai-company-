@@ -80,7 +80,12 @@ export function SettingsPage() {
             <a className="font-medium text-brand hover:underline" href="/sources">
               Sources
             </a>
-            . Only implemented, authorized connectors can scan — Reddit, LinkedIn, Facebook, X, and freelance marketplaces are not connected unless a tested connector ships.
+            . Hacker News and Reddit have live connectors; LinkedIn, Facebook and other platforms are import-only as lead sources. Connect company
+            LinkedIn, Facebook, Reddit and X accounts (OAuth) in the{' '}
+            <a className="font-medium text-brand hover:underline" href="/control">
+              Control Center
+            </a>
+            .
           </p>
         </Section>
 

@@ -172,7 +172,27 @@ export class RedditConnector implements LeadSourceConnector {
     };
   }
 
+  /**
+   * When the CEO connects Reddit in the Control Center, scans run with that user authorization
+   * (refreshed by SocialService). An explicit REDDIT_REFRESH_TOKEN env var still takes precedence.
+   */
+  setUserTokenSource(source: (() => Promise<string | null>) | null): void {
+    this.userTokenSource = source;
+  }
+
+  private userTokenSource: (() => Promise<string | null>) | null = null;
+
+  /** Which credential the last scan used — shown in the Control Center, never the token. */
+  lastAuthMode: 'env_refresh_token' | 'connected_account' | 'app_only' | null = null;
+
   private async getAccessToken(signal?: AbortSignal): Promise<string> {
+    if (!process.env.REDDIT_REFRESH_TOKEN?.trim() && this.userTokenSource) {
+      const userToken = await this.userTokenSource().catch(() => null);
+      if (userToken) {
+        this.lastAuthMode = 'connected_account';
+        return userToken;
+      }
+    }
     const now = Date.now();
     if (this.tokenCache && this.tokenCache.expiresAt > now + 30_000) {
       return this.tokenCache.token;
@@ -207,6 +227,7 @@ export class RedditConnector implements LeadSourceConnector {
 
     const expiresIn = typeof data.expires_in === 'number' ? data.expires_in : 3600;
     this.tokenCache = { token: data.access_token, expiresAt: now + expiresIn * 1000 };
+    this.lastAuthMode = refresh ? 'env_refresh_token' : 'app_only';
     return data.access_token;
   }
 }

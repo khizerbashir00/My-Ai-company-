@@ -326,3 +326,156 @@ export interface ScoringRubric {
   criteria: { key: string; label: string; max: number; description: string }[];
   labels: Record<string, string>;
 }
+
+// ───────────── Control Center ─────────────
+
+export type SocialPlatform = 'LINKEDIN' | 'FACEBOOK' | 'REDDIT' | 'X';
+export type SocialStatus = 'NOT_CONFIGURED' | 'NOT_CONNECTED' | 'CONNECTED' | 'EXPIRED' | 'ERROR';
+
+export interface SocialPlatformStatus {
+  platform: SocialPlatform;
+  name: string;
+  status: SocialStatus;
+  configured: boolean;
+  missing: string[];
+  redirectUri: string;
+  requestedScopes: string[];
+  grantedScopes: string[];
+  account: { externalAccountId: string; displayName: string; profileUrl: string | null; metadata: unknown } | null;
+  connectedAt: string | null;
+  expiresAt: string | null;
+  lastVerifiedAt: string | null;
+  lastRefreshedAt: string | null;
+  lastError: string | null;
+  supportsRefresh: boolean;
+  hasRefreshToken: boolean;
+  usesPkce: boolean;
+  developerConsoleUrl: string;
+  docsUrl: string;
+  setupNotes: string[];
+}
+
+export type WorkflowState = 'running' | 'idle' | 'stopped' | 'blocked';
+
+export interface ControlWorkflow {
+  key: 'ai-task-worker' | 'lead-source-scans' | 'outreach-follow-ups';
+  name: string;
+  description: string;
+  enabled: boolean;
+  state: WorkflowState;
+  blockedReason: string | null;
+  lastStartedAt: string | null;
+  lastStoppedAt: string | null;
+  lastTickAt: string | null;
+  lastResult: string | null;
+  lastError: string | null;
+  lastErrorAt: string | null;
+  detail: Record<string, unknown> & {
+    current?: { taskId: string; title: string; agentName: string | null; startedAt: string } | null;
+    eligibleQueuedTasks?: number;
+    processed?: number;
+    succeeded?: number;
+    failed?: number;
+    jobsMode?: string;
+    queuePaused?: boolean;
+    activeScans?: number;
+    authorizedSources?: number;
+    dueNow?: number;
+    scheduled?: number;
+  };
+}
+
+export type AgentState = 'working' | 'queued' | 'attention' | 'idle' | 'disabled';
+
+export interface ControlAgent {
+  id: string;
+  key: string;
+  name: string;
+  kind: AgentKind;
+  role: string;
+  department: { key: string; name: string } | null;
+  parentId: string | null;
+  isEnabled: boolean;
+  state: AgentState;
+  tasks: { queued: number; running: number; awaitingApproval: number; failed: number; completedToday: number };
+  lastRun: {
+    status: 'RUNNING' | 'SUCCEEDED' | 'FAILED';
+    startedAt: string;
+    finishedAt: string | null;
+    errorMessage: string | null;
+    task: { id: string; title: string } | null;
+  } | null;
+}
+
+export interface ControlEventRow {
+  id: string;
+  level: 'INFO' | 'WARN' | 'ERROR';
+  action: string;
+  message: string;
+  createdAt: string;
+}
+
+export interface ControlStatus {
+  generatedAt: string;
+  environment: string;
+  ai: { apiKeyConfigured: boolean; routineModel: string | null; advancedModel: string | null };
+  email: { configured: boolean };
+  workflows: ControlWorkflow[];
+  monitors: { key: string; name: string; enabled: boolean; note: string }[];
+  totals: {
+    tasks: Partial<Record<TaskStatus, number>>;
+    agents: { total: number; enabled: number; working: number };
+    scansActive: number;
+    failedSends: number;
+    socialConnected: number;
+    socialTotal: number;
+  };
+  agents: ControlAgent[];
+  people: { id: string; name: string; role: 'CEO' | 'ADMIN' | 'VIEWER'; isActive: boolean; lastLoginAt: string | null }[];
+  jobs: {
+    agentRuns: {
+      id: string;
+      status: 'RUNNING' | 'SUCCEEDED' | 'FAILED';
+      model: string;
+      agentName: string;
+      task: { id: string; title: string; status: TaskStatus } | null;
+      startedAt: string;
+      finishedAt: string | null;
+      tokens: number;
+      errorMessage: string | null;
+    }[];
+    scans: {
+      id: string;
+      status: 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED';
+      trigger: string;
+      source: string;
+      createdAt: string;
+      startedAt: string | null;
+      finishedAt: string | null;
+      itemsFound: number;
+      itemsCreated: number;
+      itemsDeduped: number;
+      errorMessage: string | null;
+    }[];
+    goals: { id: string; title: string; status: TaskStatus; updatedAt: string; subtasks: number; subtasksDone: number }[];
+  };
+  social: SocialPlatformStatus[];
+  redditScanAuth: 'env_refresh_token' | 'connected_account' | 'app_only' | null;
+  recovery: { agentRunsFailed: number; tasksFailed: number; scanRunsFailed: number; scanRunsRequeued: number; at: string } | null;
+  events: ControlEventRow[];
+}
+
+export interface ControlActionResult {
+  action: string;
+  at: string;
+  ok: boolean;
+  summary: string;
+  items: { target: string; ok: boolean; message: string }[];
+}
+
+export interface ConnectAllResult extends ControlActionResult {
+  next: { platform: SocialPlatform; authorizationUrl: string; expiresAt: string } | null;
+  pending: SocialPlatform[];
+  connected: SocialPlatform[];
+  unconfigured: { platform: SocialPlatform; name: string; missing: string[] }[];
+}

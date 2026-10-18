@@ -30,7 +30,11 @@ export interface RunTaskOptions {
   cascade?: boolean;
   /** Max cascade depth (goal→manager→worker = 2). */
   maxDepth?: number;
+  /** External stop (Control Center "Stop All"): aborts the model call and stops between tool calls. */
+  signal?: AbortSignal;
 }
+
+export const STOPPED_BY_CONTROL_MESSAGE = 'Stopped from the Control Center before finishing. Use Restart Failed to retry.';
 
 export interface RunTaskResult {
   task: TaskDetail;
@@ -83,16 +87,17 @@ export class TaskRunnerService {
       };
     }
 
-    const outcome = await this.executeClaimed(claimed.task, user, ctx);
+    const outcome = await this.executeClaimed(claimed.task, user, ctx, opts.signal);
     const childrenCreated = outcome.childrenCreated;
     const childrenRan: string[] = [];
 
     if (cascade && maxDepth > 0 && childrenCreated.length && !outcome.awaitingApproval) {
       for (const childId of childrenCreated) {
+        if (opts.signal?.aborted) break;
         const child = await this.prisma.task.findUnique({ where: { id: childId }, select: { status: true } });
         if (!child || child.status !== 'QUEUED') continue;
         try {
-          const nested = await this.runTask(childId, user, ctx, { cascade: true, maxDepth: maxDepth - 1 });
+          const nested = await this.runTask(childId, user, ctx, { cascade: true, maxDepth: maxDepth - 1, signal: opts.signal });
           childrenRan.push(childId);
           childrenCreated.push(...nested.childrenCreated);
           childrenRan.push(...nested.childrenRan);
@@ -188,6 +193,7 @@ export class TaskRunnerService {
     task: TaskDetail,
     user: AuthUser,
     _ctx: RequestContext,
+    externalSignal?: AbortSignal,
   ): Promise<{ runId: string; childrenCreated: string[]; awaitingApproval: boolean; message: string }> {
     const agent = await this.prisma.agentDefinition.findUniqueOrThrow({
       where: { id: task.assignedAgentId! },
@@ -224,6 +230,9 @@ export class TaskRunnerService {
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), AI_CALL_TIMEOUT_MS);
+    const onExternalAbort = () => controller.abort();
+    if (externalSignal?.aborted) controller.abort();
+    else externalSignal?.addEventListener('abort', onExternalAbort, { once: true });
 
     const actor: TaskActor = { type: 'AGENT', agentId: agent.id, createdByUserId: user.id };
     const childrenCreated: string[] = [];
@@ -361,6 +370,7 @@ export class TaskRunnerService {
       for (const req of requests) {
         const latestStatus = await this.prisma.task.findUnique({ where: { id: task.id }, select: { status: true } });
         if (latestStatus?.status === 'CANCELLED') throw new AiCancelledError('Task was cancelled during tool execution.');
+        if (externalSignal?.aborted) throw new AiCancelledError(STOPPED_BY_CONTROL_MESSAGE);
 
         const result = await this.tools.execute(req.tool, toolRequestToArgs(req), toolCtx);
         if (result.createdTaskId) childrenCreated.push(result.createdTaskId);
@@ -469,7 +479,7 @@ export class TaskRunnerService {
         message: 'AI execution completed.',
       };
     } catch (err) {
-      const message = publicErrorMessage(err);
+      const message = externalSignal?.aborted ? STOPPED_BY_CONTROL_MESSAGE : publicErrorMessage(err);
       await this.runs.fail(run.id, message, usage.totalTokens ? usage : null).catch(() => undefined);
 
       const latest = await this.prisma.task.findUnique({ where: { id: task.id }, select: { status: true } });
@@ -493,6 +503,7 @@ export class TaskRunnerService {
       throw new ServiceUnavailableException(message);
     } finally {
       clearTimeout(timer);
+      externalSignal?.removeEventListener('abort', onExternalAbort);
     }
   }
 

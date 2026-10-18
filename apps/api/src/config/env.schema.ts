@@ -54,6 +54,37 @@ export const envSchema = z.object({
   REDDIT_REFRESH_TOKEN: optionalString,
   /** Optional custom User-Agent (Reddit requires a descriptive UA). */
   REDDIT_USER_AGENT: optionalString,
+
+  // ── Social OAuth connections ──
+  /**
+   * Public origin the browser uses for this app (e.g. https://hq.example.com). OAuth redirect URIs are
+   * built from it: <PUBLIC_APP_URL>/api/social/<platform>/callback. Defaults to the first CORS origin.
+   */
+  PUBLIC_APP_URL: optionalString.refine((v) => v === undefined || /^https?:\/\/[^/]+$/.test(v), {
+    message: 'PUBLIC_APP_URL must be an origin like https://hq.example.com (no path, no trailing slash)',
+  }),
+  /** 32-byte key, base64 (openssl rand -base64 32). Encrypts OAuth tokens at rest. Required in production. */
+  TOKEN_ENCRYPTION_KEY: optionalString.refine((v) => v === undefined || Buffer.from(v, 'base64').length === 32, {
+    message: 'TOKEN_ENCRYPTION_KEY must be 32 bytes, base64-encoded (openssl rand -base64 32)',
+  }),
+  LINKEDIN_CLIENT_ID: optionalString,
+  LINKEDIN_CLIENT_SECRET: optionalString,
+  /** Space-separated. Default: openid profile email w_member_social */
+  LINKEDIN_SCOPES: optionalString,
+  FACEBOOK_APP_ID: optionalString,
+  FACEBOOK_APP_SECRET: optionalString,
+  /** Graph API version, e.g. v26.0 */
+  FACEBOOK_GRAPH_VERSION: optionalString.refine((v) => v === undefined || /^v\d+\.\d+$/.test(v), {
+    message: 'FACEBOOK_GRAPH_VERSION must look like v26.0',
+  }),
+  /** Comma-separated. Default: public_profile,pages_show_list,pages_read_engagement,pages_manage_posts */
+  FACEBOOK_SCOPES: optionalString,
+  /** Space-separated. Default: identity read submit (Reddit app must be type "web app" for this flow) */
+  REDDIT_SCOPES: optionalString,
+  X_CLIENT_ID: optionalString,
+  X_CLIENT_SECRET: optionalString,
+  /** Space-separated. Default: tweet.read tweet.write users.read offline.access */
+  X_SCOPES: optionalString,
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -66,12 +97,14 @@ export function validateEnv(raw: Record<string, unknown>): Env {
     throw new Error(`Invalid environment configuration:\n${issues}`);
   }
   if (parsed.data.NODE_ENV === 'production') {
-    if (parsed.data.TRUST_PROXY < 1) {
-      // Soft warning via throw only if CORS looks like localhost — actually document in checklist.
+    const problems: string[] = [];
+    if (parsed.data.JWT_SECRET.length < 32) problems.push('JWT_SECRET: must be at least 32 characters in production');
+    if (parsed.data.PUBLIC_APP_URL && !parsed.data.PUBLIC_APP_URL.startsWith('https://')) {
+      problems.push('PUBLIC_APP_URL: must use https:// in production (OAuth providers reject http redirect URIs)');
     }
-    if (parsed.data.JWT_SECRET.length < 32) {
-      throw new Error('Invalid environment configuration:\n  - JWT_SECRET: must be at least 32 characters in production');
-    }
+    // A missing TOKEN_ENCRYPTION_KEY is not fatal (existing deployments keep booting); social connect
+    // stays disabled and the Control Center says why.
+    if (problems.length) throw new Error(`Invalid environment configuration:\n${problems.map((p) => `  - ${p}`).join('\n')}`);
   }
   return parsed.data;
 }

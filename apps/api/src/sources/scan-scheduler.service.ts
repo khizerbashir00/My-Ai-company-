@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConnectorRegistry } from '../connectors/connector.registry';
+import { WorkflowStateService } from '../control/control-core';
 import { PrismaService } from '../prisma/prisma.service';
 import { ScanQueueService } from './scan-queue.service';
 import { ScanService } from './scan.service';
@@ -20,13 +21,18 @@ export class ScanSchedulerService implements OnModuleInit, OnModuleDestroy {
     private readonly connectors: ConnectorRegistry,
     private readonly scan: ScanService,
     private readonly queue: ScanQueueService,
+    private readonly workflows: WorkflowStateService,
   ) {}
 
   onModuleInit(): void {
     // Avoid open handles in e2e/unit Nest apps.
     if (process.env.NODE_ENV === 'test') return;
     this.timer = setInterval(() => {
-      void this.tick().catch((err) => this.logger.warn(`Scheduler tick failed: ${err instanceof Error ? err.message : 'error'}`));
+      void this.tick().catch((err) => {
+        const msg = err instanceof Error ? err.message : 'error';
+        this.workflows.recordTick('lead-source-scans', { ok: false, error: msg });
+        this.logger.warn(`Scheduler tick failed: ${msg}`);
+      });
     }, TICK_MS);
     this.timer.unref?.();
   }
@@ -35,8 +41,9 @@ export class ScanSchedulerService implements OnModuleInit, OnModuleDestroy {
     if (this.timer) clearInterval(this.timer);
   }
 
-  /** Exposed for tests. */
-  async tick(): Promise<number> {
+  /** Exposed for tests and for Start All (immediate kick). Respects the Control Center switch. */
+  async tick(opts: { force?: boolean } = {}): Promise<number> {
+    if (!opts.force && !this.workflows.isEnabled('lead-source-scans')) return 0;
     const connections = await this.prisma.sourceConnection.findMany({
       where: {
         status: { not: 'DISABLED' },
@@ -72,6 +79,7 @@ export class ScanSchedulerService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
+    this.workflows.recordTick('lead-source-scans', { ok: true, message: `Checked ${connections.length} connection(s); queued ${enqueued} scan(s).` });
     return enqueued;
   }
 }

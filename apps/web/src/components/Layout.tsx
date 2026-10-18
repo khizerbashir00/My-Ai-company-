@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Bell, CheckSquare, FileText, LayoutDashboard, Link2, LogOut, Megaphone, Menu, MessageSquare, Network, Settings, ShieldCheck, Users, X } from 'lucide-react';
+import { Bell, CheckSquare, FileText, Gauge, LayoutDashboard, Link2, LogOut, Megaphone, Menu, MessageSquare, Network, Settings, ShieldCheck, Users, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router';
 import { api } from '../lib/api';
@@ -10,6 +10,7 @@ import { cx } from './ui';
 
 const NAV = [
   { to: '/', label: 'Overview', icon: LayoutDashboard, end: true },
+  { to: '/control', label: 'Control Center', icon: Gauge },
   { to: '/leads', label: 'Leads', icon: Users },
   { to: '/sources', label: 'Sources', icon: Link2 },
   { to: '/marketing', label: 'Marketing', icon: Megaphone },

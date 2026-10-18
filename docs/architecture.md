@@ -25,7 +25,9 @@ The browser only ever talks to its own origin. Sessions are an httpOnly, `SameSi
 | `dashboard` | Metrics from database counts, each with a written definition |
 | `events` | In-process event bus → SSE stream |
 | `ai` | OpenAI provider boundary, model resolution, structured-output validation (secrets never leave the server) |
-| `orchestration` | Task runner, GM plan validation, registry-checked tool execution, agent runs / usage |
+| `orchestration` | Task runner, GM plan validation, registry-checked tool execution, agent runs / usage; accepts an external abort signal |
+| `control` | Control Center: persisted workflow switches (`workflow_controls`), operations log (`control_events`), background AI task worker, startup recovery, Start/Stop/Restart Failed/Connect All |
+| `social` | OAuth 2.0 code flow for LinkedIn, Facebook, Reddit and X (state + PKCE in `oauth_states`), AES-256-GCM-encrypted tokens in `social_accounts`, refresh, verify, revoke |
 
 Guards run in order: rate limiter (120/min default, 5/min for login and password change) → authentication/RBAC. A global validation pipe strips and rejects unknown fields. A global exception filter returns `{statusCode, error, message, requestId}` and never leaks stack traces, SQL or secrets; unexpected errors are logged server-side with the same request ID.
 
@@ -79,6 +81,25 @@ Notable constraints: lead de-duplication is per source on `(source_id, external_
 ## Dashboard metrics
 
 `GET /api/dashboard/metrics` returns counts plus a `definitions` object explaining each number (shown in the UI under "How these are counted"). Lead metrics use leads discovered in the date range; event metrics use when the event happened. Marketing reach/engagement report `measured: false` until an analytics source exists — nothing is estimated.
+
+## Control Center
+
+`/api/control/*` drives real backend state:
+
+| Button | What the server does |
+| --- | --- |
+| Start All | Persists all workflows ON, resumes the BullMQ scan worker, runs a scheduler tick now, starts the AI task worker (refused with a reason when no AI key is set) |
+| Stop All | Persists all workflows OFF, aborts the in-flight AI call (task → FAILED, retryable), aborts running scans, pauses the BullMQ worker and cancels queued scans. Nothing is deleted; queued tasks stay queued |
+| Restart Failed | FAILED tasks → QUEUED via the state machine's retry edge (respecting max attempts, enabled agent), re-scans connections whose last scan failed, re-tests social connections in ERROR. Failed email sends are never retried automatically |
+| Connect All | Starts the next pending OAuth flow; the callback returns with `connectAll=1` and the UI continues until every configured platform is connected |
+
+The AI task worker picks QUEUED tasks whose agent is enabled and whose dependencies are complete (highest priority first) and runs them through the same `TaskRunnerService` as "Run with AI", without cascade — subtasks are picked up as their own jobs. Every action writes `audit_logs` and `control_events` and emits `control.updated` over SSE.
+
+**Startup recovery.** Before this, a crash or redeploy left tasks, agent runs and scans `RUNNING` forever: the task could never be retried (its open run looked live) and the scheduler skipped that source permanently. At boot `RecoveryService` marks them FAILED with a clear reason and re-enqueues QUEUED scans whose job was lost.
+
+## Social OAuth
+
+The callback route is public by necessity: the session cookie is `SameSite=Strict`, so browsers don't send it on the cross-site redirect back from the provider. The caller is identified by a single-use `state` (only its SHA-256 is stored), valid for 10 minutes and bound to the platform; the redirect target is always `<PUBLIC_APP_URL>/control`. Tokens are encrypted with AES-256-GCM (`TOKEN_ENCRYPTION_KEY`), never returned by the API, and redacted from logs. A connected Reddit account is used by the Reddit lead-source connector.
 
 ## Live updates
 
